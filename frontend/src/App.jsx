@@ -497,9 +497,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    if (socket) {
-      socket.disconnect();
-    }
+    disconnectSocket();
     localStorage.removeItem('cc_user');
     localStorage.removeItem('cc_token');
     setUser(null);

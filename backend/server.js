@@ -25,17 +25,19 @@ const server = http.createServer(app);
 
 // Configure CORS
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production'
-    ? 'https://cyber-chat-chi.vercel.app'
-    : 'http://localhost:5173',
-  methods: ['GET', 'POST'],
+  origin: ['https://cyber-chat-chi.vercel.app', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
 
 app.use(helmet({
-  contentSecurityPolicy: false, // Turn off CSP so local static files are easy to load
+  contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Trust Render's reverse proxy so rate limiter gets the real client IP
+app.set('trust proxy', 1);
 
 // Apply Rate Limiting to HTTP routes
 const apiLimiter = rateLimit({

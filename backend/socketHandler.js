@@ -7,8 +7,9 @@ const Message = require('./models/Message');
 const Report = require('./models/Report');
 const Log = require('./models/Log');
 
-// Profanity list for moderating chat
-const PROFANITY_REGEX = /\b(fuck|shit|asshole|bitch|bastard|crap|dick|piss|cunt)\b/gi;
+// Profanity list for moderating chat — NOTE: do NOT use /g flag on a shared regex with .test()
+// because the lastIndex state is retained, causing alternating calls to return wrong results.
+const PROFANITY_LIST = /(\b(fuck|shit|asshole|bitch|bastard|crap|dick|piss|cunt)\b)/i;
 
 // XSS Sanitizer Helper
 const sanitizeText = (str) => {
@@ -616,11 +617,12 @@ module.exports = function registerSocketHandlers(io, state) {
           }
         }
 
-        // Profanity scans
+        // Profanity scans — create a fresh regex each call to avoid lastIndex state bug
         let messageText = text || '';
         let censored = false;
+        const PROFANITY_REGEX = /\b(fuck|shit|asshole|bitch|bastard|crap|dick|piss|cunt)\b/gi;
         if (messageText && PROFANITY_REGEX.test(messageText)) {
-          messageText = messageText.replace(PROFANITY_REGEX, (match) => '*'.repeat(match.length));
+          messageText = messageText.replace(/\b(fuck|shit|asshole|bitch|bastard|crap|dick|piss|cunt)\b/gi, (match) => '*'.repeat(match.length));
           censored = true;
         }
 
