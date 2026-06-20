@@ -15,7 +15,7 @@ const mongoose = require('mongoose');
 const { router: authRouter } = require('./routes/auth');
 
 // Connect to MongoDB
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cyberchat';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vikasprajapat20004_db_user:7IXmzc3isvDSs2jD@cluster0.kiyfv7l.mongodb.net/cyberchat?appName=Cluster0';
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('Connected to MongoDB successfully!'))
   .catch((err) => console.error('MongoDB connection error:', err));
@@ -25,7 +25,7 @@ const server = http.createServer(app);
 
 // Configure CORS
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
+  origin: process.env.NODE_ENV === 'production'
     ? [process.env.FRONTEND_URL, 'https://cyber-chat-cc.vercel.app'].filter(Boolean)
     : 'http://localhost:5173',
   methods: ['GET', 'POST'],
@@ -85,17 +85,17 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    
+
     // Determine type category (image or file)
     const mimeType = req.file.mimetype;
     let fileType = 'file';
     if (mimeType.startsWith('image/')) {
       fileType = 'image';
     }
-    
+
     // Construct local path URL (frontend will combine this with host if needed)
     const fileUrl = `/uploads/${req.file.filename}`;
-    
+
     res.json({
       fileUrl,
       fileName: req.file.originalname,
