@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { Shield, ArrowRight, Sun, Moon, User, Lock, Mail, Key, KeyRound, Eye, EyeOff } from 'lucide-react';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://cyberchat-d26c.onrender.com';
+
 function Login({ onLogin, theme, toggleTheme, showToast }) {
   const [tab, setTab] = useState('login'); // login, register_user, register_admin, forgot, reset
 
@@ -72,7 +74,7 @@ function Login({ onLogin, theme, toggleTheme, showToast }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: loginId.trim(), password: loginPassword.trim() })
@@ -114,7 +116,7 @@ function Login({ onLogin, theme, toggleTheme, showToast }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/register-user', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/register-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -167,7 +169,7 @@ function Login({ onLogin, theme, toggleTheme, showToast }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/register-admin', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/register-admin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -211,7 +213,7 @@ function Login({ onLogin, theme, toggleTheme, showToast }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.trim() })
@@ -249,7 +251,7 @@ function Login({ onLogin, theme, toggleTheme, showToast }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await fetch(`${BACKEND_URL}/api/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetToken.trim(), newPassword: newPassword.trim() })
