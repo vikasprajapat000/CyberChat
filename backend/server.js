@@ -26,7 +26,7 @@ const server = http.createServer(app);
 // Configure CORS
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
-    ? [process.env.FRONTEND_URL, 'https://cyber-chat-cc.vercel.app'].filter(Boolean)
+    ? 'https://cyber-chat-chi.vercel.app'
     : 'http://localhost:5173',
   methods: ['GET', 'POST'],
   credentials: true
