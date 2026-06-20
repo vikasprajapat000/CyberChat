@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-const BACKEND_URL = 'https://cyberchat-d26c.onrender.com';
+const BACKEND_URL = 'https://cyberchat-tiy0.onrender.com';
 
 export const useSocket = () => {
   const [connected, setConnected] = useState(false);

@@ -98,7 +98,7 @@ function App() {
     const token = localStorage.getItem('cc_token');
     const savedUser = localStorage.getItem('cc_user');
     if (token && savedUser) {
-      fetch(`https://cyberchat-d26c.onrender.com/api/auth/me`, {
+      fetch(`https://cyberchat-tiy0.onrender.com/api/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => {

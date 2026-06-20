@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Shield, ArrowRight, Sun, Moon, User, Lock, Mail, Key, KeyRound, Eye, EyeOff } from 'lucide-react';
 
-const BACKEND_URL = 'https://cyberchat-d26c.onrender.com';
+const BACKEND_URL = 'https://cyberchat-tiy0.onrender.com';
 
 function Login({ onLogin, theme, toggleTheme, showToast }) {
   const [tab, setTab] = useState('login'); // login, register_user, register_admin, forgot, reset

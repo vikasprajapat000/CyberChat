@@ -12,7 +12,7 @@ import PollCreator from './PollCreator';
 import confetti from 'canvas-confetti';
 import { SOCKET_EVENTS } from '../../../shared/constants.json';
 
-const BACKEND_URL = 'https://cyberchat-d26c.onrender.com';
+const BACKEND_URL = 'https://cyberchat-tiy0.onrender.com';
 
 // Pre-seeded local developer sticker pack
 const DEVELOPER_STICKERS = [
