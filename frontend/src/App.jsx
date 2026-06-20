@@ -7,6 +7,7 @@ import { ToastContainer } from './components/Toast';
 import { SOCKET_EVENTS } from '../../shared/constants.json';
 import { playNotificationSound } from './utils/audio';
 import CallModal from './components/CallModal';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://cyberchat-tiy0.onrender.com';
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -98,7 +99,7 @@ function App() {
     const token = localStorage.getItem('cc_token');
     const savedUser = localStorage.getItem('cc_user');
     if (token && savedUser) {
-      fetch(`https://cyberchat-tiy0.onrender.com/api/auth/me`, {
+      fetch(`${BACKEND_URL}/api/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => {
