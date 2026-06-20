@@ -38,10 +38,57 @@ const messageSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // GIF support
+  gifUrl: {
+    type: String,
+    default: null
+  },
+  gifTitle: {
+    type: String,
+    default: null
+  },
+  // Reply / Forward
   replyToId: {
     type: String,
     default: null
   },
+  isForwarded: {
+    type: Boolean,
+    default: false
+  },
+  forwardedFrom: {
+    type: String,
+    default: null  // original sender's username
+  },
+  // Disappearing messages
+  disappearsAt: {
+    type: Date,
+    default: null,
+    index: true  // used for MongoDB TTL cleanup
+  },
+  // View-once
+  viewOnce: {
+    type: Boolean,
+    default: false
+  },
+  viewedBy: [{
+    type: String  // userIds who have viewed it
+  }],
+  // Secret chat (ephemeral, still tracked for call history etc.)
+  isSecret: {
+    type: Boolean,
+    default: false
+  },
+  // Mentions
+  mentionedUsers: [{
+    type: String  // userIds mentioned
+  }],
+  // Linked to a call
+  callId: {
+    type: String,
+    default: null
+  },
+  // Message metadata
   timestamp: {
     type: Date,
     default: Date.now,
@@ -68,6 +115,7 @@ const messageSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },
+  // Poll
   isPoll: {
     type: Boolean,
     default: false

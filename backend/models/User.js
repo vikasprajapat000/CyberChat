@@ -32,13 +32,22 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: 'Active'
   },
+  profilePhoto: {
+    type: String,
+    default: null
+  },
+  coverPhoto: {
+    type: String,
+    default: null
+  },
   customThemeColor: {
     type: String,
     default: '#00a884'
   },
+  // Privacy Settings
   lastSeenSetting: {
     type: String,
-    enum: ['everyone', 'nobody'],
+    enum: ['everyone', 'contacts', 'nobody'],
     default: 'everyone'
   },
   onlineVisibility: {
@@ -46,6 +55,12 @@ const userSchema = new mongoose.Schema({
     enum: ['visible', 'invisible'],
     default: 'visible'
   },
+  profilePhotoVisibility: {
+    type: String,
+    enum: ['everyone', 'contacts', 'nobody'],
+    default: 'everyone'
+  },
+  // Account Status
   status: {
     type: String,
     enum: ['online', 'offline'],
@@ -55,10 +70,11 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
-  blockedUsers: [{
+  // Social
+  followers: [{
     type: String
   }],
-  mutedUsers: [{
+  following: [{
     type: String
   }],
   contacts: [{
@@ -73,6 +89,31 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: []
   }],
+  // Blocks & Mutes
+  blockedUsers: [{
+    type: String
+  }],
+  mutedUsers: [{
+    type: String
+  }],
+  // Security
+  pinLock: {
+    type: String,
+    default: null  // hashed PIN
+  },
+  fingerprintEnabled: {
+    type: Boolean,
+    default: false
+  },
+  loginAlerts: {
+    type: Boolean,
+    default: true
+  },
+  e2eEnabled: {
+    type: Boolean,
+    default: true
+  },
+  // Admin Controls
   isMutedGlobally: {
     type: Boolean,
     default: false
@@ -81,6 +122,35 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isBanned: {
+    type: Boolean,
+    default: false
+  },
+  reportCount: {
+    type: Number,
+    default: 0
+  },
+  // Preferences
+  language: {
+    type: String,
+    default: 'en'
+  },
+  disappearingMessageTimer: {
+    type: Number,
+    default: 0  // 0 = off, seconds otherwise
+  },
+  notificationSettings: {
+    messages: { type: Boolean, default: true },
+    calls: { type: Boolean, default: true },
+    mentions: { type: Boolean, default: true },
+    broadcasts: { type: Boolean, default: true }
+  },
+  // Login History
+  loginHistory: [{
+    ip: String,
+    userAgent: String,
+    timestamp: { type: Date, default: Date.now }
+  }],
   createdAt: {
     type: Date,
     default: Date.now

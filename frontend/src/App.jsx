@@ -36,6 +36,15 @@ function App() {
   const [notificationsPermission, setNotificationsPermission] = useState('default');
   const [toasts, setToasts] = useState([]);
   const [latencyQuality, setLatencyQuality] = useState('excellent'); // excellent, fair, poor
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Administrative Analytics State
   const [analyticsData, setAnalyticsData] = useState({
@@ -63,10 +72,69 @@ function App() {
   const incomingOfferRef = useRef(null);
   const callStateRef = useRef('idle');
 
+  // Unified callId and duration tracking
+  const [activeCallId, setActiveCallId] = useState(null);
+  const activeCallIdRef = useRef(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const callDurationRef = useRef(0);
+  const iceCandidatesQueueRef = useRef([]);
+
   // Synchronize state ref to bypass closures inside listeners
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  useEffect(() => {
+    activeCallIdRef.current = activeCallId;
+  }, [activeCallId]);
+
+  // Call duration timer
+  useEffect(() => {
+    let timer;
+    if (callState === 'connected') {
+      setCallDuration(0);
+      callDurationRef.current = 0;
+      timer = setInterval(() => {
+        setCallDuration(prev => {
+          const next = prev + 1;
+          callDurationRef.current = next;
+          return next;
+        });
+      }, 1000);
+    } else {
+      setCallDuration(0);
+      callDurationRef.current = 0;
+    }
+    return () => clearInterval(timer);
+  }, [callState]);
+
+  // Safe ICE candidate operations
+  const addIceCandidateSafely = async (candidate) => {
+    const pc = pcRef.current;
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.error('Error adding remote ICE candidate:', e);
+      }
+    } else {
+      iceCandidatesQueueRef.current.push(candidate);
+    }
+  };
+
+  const processIceQueue = async () => {
+    const pc = pcRef.current;
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      while (iceCandidatesQueueRef.current.length > 0) {
+        const candidate = iceCandidatesQueueRef.current.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.error('Error adding remote ICE candidate from queue:', e);
+        }
+      }
+    }
+  };
 
   // STUN Config
   const peerConnectionConfig = {
@@ -410,15 +478,16 @@ function App() {
     };
 
     // WebRTC Signalling Event Handlers
-    const handleIncomingCall = async ({ from, fromUser, offer, isVideo }) => {
+    const handleIncomingCall = async ({ from, fromUser, offer, isVideo, callId }) => {
       if (callStateRef.current !== 'idle') {
-        socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: from });
+        socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: from, callId });
         return;
       }
       setCallState('receiving');
       setCallPartner({ id: from, username: fromUser.username });
       setIsVideoCall(isVideo);
-      incomingOfferRef.current = { from, offer, isVideo };
+      setActiveCallId(callId);
+      incomingOfferRef.current = { from, offer, isVideo, callId };
     };
 
     const handleCallAccepted = async ({ from, answer }) => {
@@ -426,6 +495,7 @@ function App() {
         try {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
           setCallState('connected');
+          await processIceQueue();
         } catch (e) {
           console.error('Error setting remote description:', e);
         }
@@ -438,13 +508,7 @@ function App() {
     };
 
     const handleIceCandidate = async ({ from, candidate }) => {
-      if (pcRef.current) {
-        try {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-          console.error('Error adding remote ICE candidate:', e);
-        }
-      }
+      await addIceCandidateSafely(candidate);
     };
 
     const handleEndCall = ({ from }) => {
@@ -534,6 +598,9 @@ function App() {
     setVideoMuted(false);
     setIsSharingScreen(false);
     incomingOfferRef.current = null;
+    setActiveCallId(null);
+    setCallDuration(0);
+    iceCandidatesQueueRef.current = [];
   };
 
   const onStartCall = async (targetUserId, isVideo) => {
@@ -544,17 +611,19 @@ function App() {
       return;
     }
 
+    const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     setCallState('dialing');
     setCallPartner({ id: partner.id, username: partner.username });
     setIsVideoCall(isVideo);
     setAudioMuted(false);
     setVideoMuted(false);
     setIsSharingScreen(false);
+    setActiveCallId(callId);
 
     try {
       const constraints = {
         audio: true,
-        video: isVideo ? { width: 1280, height: 720 } : false
+        video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -590,7 +659,8 @@ function App() {
         to: targetUserId,
         offer,
         fromUser: { id: user.id, username: user.username },
-        isVideo
+        isVideo,
+        callId
       });
     } catch (err) {
       console.error('Call initialization failed:', err);
@@ -607,11 +677,12 @@ function App() {
     setAudioMuted(false);
     setVideoMuted(false);
     setIsSharingScreen(false);
+    setActiveCallId(incoming.callId);
 
     try {
       const constraints = {
         audio: true,
-        video: incoming.isVideo ? { width: 1280, height: 720 } : false
+        video: incoming.isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -641,6 +712,7 @@ function App() {
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(incoming.offer));
+      await processIceQueue();
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -652,7 +724,7 @@ function App() {
     } catch (err) {
       console.error('Accepting call failed:', err);
       showToast('Hardware access error', 'error');
-      socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: incoming.from });
+      socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: incoming.from, callId: incoming.callId });
       cleanupCall();
     }
   };
@@ -660,14 +732,20 @@ function App() {
   const onDecline = () => {
     const incoming = incomingOfferRef.current;
     if (incoming) {
-      socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: incoming.from });
+      socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: incoming.from, callId: incoming.callId });
     }
     cleanupCall();
   };
 
   const onHangup = () => {
     if (callPartner && (callState === 'connected' || callState === 'dialing')) {
-      socket.emit(SOCKET_EVENTS.END_CALL, { to: callPartner.id });
+      const duration = callDurationRef.current || 0;
+      socket.emit(SOCKET_EVENTS.END_CALL, { 
+        to: callPartner.id, 
+        callId: activeCallIdRef.current,
+        duration,
+        type: isVideoCall ? 'video' : 'audio'
+      });
     }
     cleanupCall();
   };
@@ -767,6 +845,7 @@ function App() {
       {/* WebRTC Calling dialog modal */}
       {user && (
         <CallModal
+          isMobile={isMobile}
           callState={callState}
           callPartner={callPartner}
           isVideoCall={isVideoCall}

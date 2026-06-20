@@ -3,10 +3,13 @@ import React, { useState } from 'react';
 import { 
   Users, MessageSquare, PlusCircle, LogIn, ShieldAlert, 
   Trash2, VolumeX, Volume2, ShieldOff, Activity, ShieldAlert as ReportIcon,
-  Download, Printer, FileText, Calendar, Filter, UserCheck, Shield
+  Download, Printer, FileText, Calendar, Filter, UserCheck, Shield, ArrowLeft,
+  Flag, HardDrive, Radio, AlertCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import ContentModeration from './ContentModeration';
+import StorageManager from './StorageManager';
 
 function AdminDashboard({
   user,
@@ -16,10 +19,13 @@ function AdminDashboard({
   rooms,
   onlineUsers,
   showToast,
-  messages
+  messages,
+  setActiveTab,
+  isMobile
 }) {
   const { totalMessagesSent, totalRoomsCreated, totalLogins, onlineUsersCount, activityLogs } = analyticsData;
-  const [dashboardTab, setDashboardTab] = useState('telemetry'); // telemetry, users, rooms, pdf_export
+  const [dashboardTab, setDashboardTab] = useState('telemetry'); // telemetry, users, rooms, pdf_export, moderation, storage, broadcast
+  const [showBroadcast, setShowBroadcast] = useState(false);
 
   // PDF Export Filter States
   const [exportTargetId, setExportTargetId] = useState('');
@@ -206,6 +212,22 @@ function AdminDashboard({
     }}>
       {/* Dashboard Title Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
+        {isMobile && (
+          <button 
+            onClick={() => setActiveTab('chats')} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              cursor: 'pointer', 
+              color: 'var(--text-primary)', 
+              display: 'flex', 
+              padding: '8px',
+              marginLeft: '-8px'
+            }}
+          >
+            <ArrowLeft size={24} />
+          </button>
+        )}
         <div style={{ backgroundColor: 'var(--primary)', color: '#fff', padding: '8px', borderRadius: '8px' }}>
           <Activity size={24} />
         </div>
@@ -273,6 +295,42 @@ function AdminDashboard({
           }}
         >
           <Download size={16} /> PDF Export Reports
+        </button>
+
+        <button
+          onClick={() => setDashboardTab('moderation')}
+          style={{
+            padding: '10px 4px', border: 'none', background: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            color: dashboardTab === 'moderation' ? 'var(--primary)' : 'var(--text-secondary)',
+            borderBottom: dashboardTab === 'moderation' ? '2px solid var(--primary)' : '2px solid transparent',
+            display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap'
+          }}
+        >
+          <Flag size={16} /> Content Moderation
+        </button>
+
+        <button
+          onClick={() => setDashboardTab('storage')}
+          style={{
+            padding: '10px 4px', border: 'none', background: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            color: dashboardTab === 'storage' ? 'var(--primary)' : 'var(--text-secondary)',
+            borderBottom: dashboardTab === 'storage' ? '2px solid var(--primary)' : '2px solid transparent',
+            display: 'flex', alignItems: 'center', gap: '8px'
+          }}
+        >
+          <HardDrive size={16} /> Storage
+        </button>
+
+        <button
+          onClick={() => setDashboardTab('broadcast')}
+          style={{
+            padding: '10px 4px', border: 'none', background: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            color: dashboardTab === 'broadcast' ? 'var(--primary)' : 'var(--text-secondary)',
+            borderBottom: dashboardTab === 'broadcast' ? '2px solid var(--primary)' : '2px solid transparent',
+            display: 'flex', alignItems: 'center', gap: '8px'
+          }}
+        >
+          <Radio size={16} /> Broadcast
         </button>
       </div>
 
@@ -613,9 +671,152 @@ function AdminDashboard({
             </div>
           </div>
         )}
+
+        {/* TAB: CONTENT MODERATION */}
+        {dashboardTab === 'moderation' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Flag size={18} style={{ color: 'var(--danger)' }} /> Content Moderation
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Review user reports, flagged messages, and take moderation actions.
+              </p>
+            </div>
+            <ContentModeration
+              apiBase={window.VITE_API_URL || import.meta.env.VITE_API_URL}
+              socket={socket}
+            />
+          </div>
+        )}
+
+        {/* TAB: STORAGE MANAGER */}
+        {dashboardTab === 'storage' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <HardDrive size={18} style={{ color: 'var(--primary)' }} /> Storage Manager
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Browse, view, and delete uploaded files stored on the server.
+              </p>
+            </div>
+            <StorageManager
+              apiBase={window.VITE_API_URL || import.meta.env.VITE_API_URL}
+            />
+          </div>
+        )}
+
+        {/* TAB: BROADCAST */}
+        {dashboardTab === 'broadcast' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Radio size={18} style={{ color: 'var(--primary)' }} /> Broadcast Notification
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Send a platform-wide notification to all users (online + offline).
+              </p>
+            </div>
+            <BroadcastInlineForm socket={socket} apiBase={window.VITE_API_URL || import.meta.env.VITE_API_URL} showToast={showToast} />
+          </div>
+        )}
+
       </div>
     </div>
   );
 }
 
+// Inline broadcast form for admin dashboard tab
+function BroadcastInlineForm({ socket, apiBase, showToast }) {
+  const [title, setTitle] = React.useState('');
+  const [body, setBody] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [sent, setSent] = React.useState(false);
+  const [sentCount, setSentCount] = React.useState(0);
+  const token = localStorage.getItem('cc_token');
+
+  const handleSend = async () => {
+    if (!title.trim() || !body.trim()) {
+      showToast('Title and body are required', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/api/admin/broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: title.trim(), body: body.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (socket) socket.emit('admin_broadcast', { title: title.trim(), body: body.trim() });
+        setSentCount(data.notifCount || 0);
+        setSent(true);
+        showToast(`Broadcast sent to ${data.notifCount || 'all'} users!`, 'success');
+        setTimeout(() => { setSent(false); setTitle(''); setBody(''); }, 4000);
+      } else {
+        showToast(data.error || 'Failed to send', 'error');
+      }
+    } catch(e) {
+      showToast('Network error', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="glass-card" style={{ borderRadius: 'var(--radius-lg)', padding: '28px', maxWidth: '600px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {sent ? (
+        <div style={{ textAlign: 'center', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '48px' }}>📡</div>
+          <h4 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--primary)' }}>Broadcast Sent!</h4>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Delivered to {sentCount} users.</p>
+        </div>
+      ) : (
+        <>
+          <div style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '12px', color: 'var(--warning)' }}>
+            ⚠️ This message will be sent to ALL registered users. Use responsibly.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Notification Title</label>
+            <input
+              style={{ padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-glass)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '14px', outline: 'none' }}
+              placeholder="e.g. System Maintenance Notice"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              maxLength={100}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Message Body</label>
+            <textarea
+              style={{ padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-glass)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '14px', resize: 'vertical', outline: 'none', minHeight: '100px' }}
+              placeholder="Write your broadcast message..."
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              maxLength={1000}
+            />
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>{body.length}/1000</div>
+          </div>
+          <button
+            onClick={handleSend}
+            disabled={loading || !title.trim() || !body.trim()}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '12px 24px', borderRadius: '10px', border: 'none',
+              background: 'var(--primary)', color: '#fff', cursor: 'pointer',
+              fontSize: '14px', fontWeight: 600, opacity: loading || !title.trim() || !body.trim() ? 0.5 : 1
+            }}
+          >
+            <Radio size={14} />
+            {loading ? 'Sending...' : 'Send to All Users'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default AdminDashboard;
+

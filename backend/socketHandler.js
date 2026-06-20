@@ -6,6 +6,8 @@ const Room = require('./models/Room');
 const Message = require('./models/Message');
 const Report = require('./models/Report');
 const Log = require('./models/Log');
+const CallHistory = require('./models/CallHistory');
+const Notification = require('./models/Notification');
 
 // Profanity list for moderating chat — NOTE: do NOT use /g flag on a shared regex with .test()
 // because the lastIndex state is retained, causing alternating calls to return wrong results.
@@ -959,18 +961,46 @@ module.exports = function registerSocketHandlers(io, state) {
     });
 
     // WebRTC calling signaling relay rules mapping
-    socket.on(SOCKET_EVENTS.CALL_USER, ({ to, offer, fromUser, isVideo }) => {
+    socket.on(SOCKET_EVENTS.CALL_USER, async ({ to, offer, fromUser, isVideo, callId }) => {
       const recipientSocketId = connectedUsers.get(to);
       if (recipientSocketId) {
         io.to(recipientSocketId).emit(SOCKET_EVENTS.CALL_USER, {
           from: currentUserId,
           fromUser,
           offer,
-          isVideo
+          isVideo,
+          callId
         });
         logActivity('CALL_START', `Call signaling init between ${currentUserId} and ${to}`);
+
+        // Notify target if they are not actively watching
+        try {
+          const notif = new Notification({
+            id: `notif_${uuidv4().substring(0,10)}`,
+            userId: to,
+            type: 'call_incoming',
+            title: `${isVideo ? 'Video' : 'Voice'} Call from ${currentUser.username}`,
+            body: `${currentUser.username} is calling you.`,
+            metadata: { callerId: currentUserId, callerName: currentUser.username, isVideo, callId }
+          });
+          await notif.save();
+        } catch(e) { /* non-critical */ }
       } else {
         socket.emit(SOCKET_EVENTS.CALL_REJECTED, { reason: 'User offline' });
+        // Save missed call record
+        try {
+          const missed = new CallHistory({
+            id: callId || `call_${uuidv4().substring(0,10)}`,
+            callerId: currentUserId,
+            callerName: currentUser.username,
+            receiverId: to,
+            type: isVideo ? 'video' : 'audio',
+            status: 'missed',
+            startedAt: new Date(),
+            endedAt: new Date()
+          });
+          await missed.save();
+        } catch(e) { /* non-critical */ }
       }
     });
 
@@ -985,9 +1015,23 @@ module.exports = function registerSocketHandlers(io, state) {
       }
     });
 
-    socket.on(SOCKET_EVENTS.CALL_REJECTED, ({ to }) => {
+    socket.on(SOCKET_EVENTS.CALL_REJECTED, async ({ to, callId }) => {
       const sId = connectedUsers.get(to);
       if (sId) io.to(sId).emit(SOCKET_EVENTS.CALL_REJECTED, { from: currentUserId });
+      // Save declined call record
+      try {
+        const declined = new CallHistory({
+          id: callId || `call_${uuidv4().substring(0,10)}`,
+          callerId: to,
+          receiverId: currentUserId,
+          receiverName: currentUser.username,
+          type: 'audio',
+          status: 'declined',
+          startedAt: new Date(),
+          endedAt: new Date()
+        });
+        await declined.save();
+      } catch(e) { /* non-critical */ }
     });
 
     socket.on(SOCKET_EVENTS.ICE_CANDIDATE, ({ to, candidate }) => {
@@ -995,11 +1039,39 @@ module.exports = function registerSocketHandlers(io, state) {
       if (sId) io.to(sId).emit(SOCKET_EVENTS.ICE_CANDIDATE, { from: currentUserId, candidate });
     });
 
-    socket.on(SOCKET_EVENTS.END_CALL, ({ to }) => {
+    socket.on(SOCKET_EVENTS.END_CALL, async ({ to, callId, duration, type, recordingUrl }) => {
       const sId = connectedUsers.get(to);
       if (sId) {
         io.to(sId).emit(SOCKET_EVENTS.END_CALL, { from: currentUserId });
         logActivity('CALL_END', `WebRTC Call hangup between ${currentUserId} and ${to}`);
+      }
+      // Save call history
+      try {
+        const endedCall = new CallHistory({
+          id: callId || `call_${uuidv4().substring(0,10)}`,
+          callerId: currentUserId,
+          callerName: currentUser.username,
+          receiverId: to,
+          type: type || 'audio',
+          status: 'answered',
+          duration: duration || 0,
+          recordingUrl: recordingUrl || null,
+          startedAt: new Date(Date.now() - (duration || 0) * 1000),
+          endedAt: new Date()
+        });
+        await endedCall.save();
+      } catch(e) { /* non-critical */ }
+    });
+
+    // Get call history for current user
+    socket.on('get_call_history', async () => {
+      try {
+        const calls = await CallHistory.find({
+          $or: [{ callerId: currentUserId }, { receiverId: currentUserId }]
+        }).sort({ startedAt: -1 }).limit(50);
+        socket.emit('call_history', { calls });
+      } catch(e) {
+        console.error('get_call_history error:', e);
       }
     });
 
@@ -1426,6 +1498,340 @@ module.exports = function registerSocketHandlers(io, state) {
         console.error('remove_contact error:', err);
       }
     });
+
+    // ─── NEW FEATURES ─────────────────────────────────────────────────────────
+
+    // Send disappearing message (with TTL)
+    socket.on('send_disappearing_message', async (messageData) => {
+      try {
+        const { senderId, recipientId, roomId, text, mediaUrl, mediaType, mediaName, replyToId, timerSeconds } = messageData;
+        if (!timerSeconds || timerSeconds <= 0) return;
+
+        const senderProfile = await User.findOne({ userId: senderId });
+        if (senderProfile && senderProfile.isMutedGlobally) return;
+
+        const disappearsAt = new Date(Date.now() + timerSeconds * 1000);
+        const newMsg = new Message({
+          id: `msg_${uuidv4()}`,
+          senderId, recipientId, roomId,
+          text: sanitizeText(text),
+          mediaUrl, mediaType, mediaName, replyToId,
+          disappearsAt,
+          timestamp: new Date(),
+          status: 'sent'
+        });
+        await newMsg.save();
+
+        const payload = { ...newMsg.toObject(), timestamp: newMsg.timestamp.toISOString(), disappearsAt: disappearsAt.toISOString() };
+        if (roomId) {
+          io.to(roomId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+        } else if (recipientId) {
+          const recSock = connectedUsers.get(recipientId);
+          const sndSock = connectedUsers.get(senderId);
+          if (recSock) io.to(recSock).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+          if (sndSock) io.to(sndSock).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+        }
+      } catch(e) { console.error('send_disappearing_message error:', e); }
+    });
+
+    // View-once message viewed
+    socket.on('view_once_viewed', async ({ messageId }) => {
+      try {
+        const msg = await Message.findOne({ id: messageId });
+        if (!msg || !msg.viewOnce) return;
+
+        if (!msg.viewedBy.includes(currentUserId)) {
+          msg.viewedBy.push(currentUserId);
+          msg.markModified('viewedBy');
+          await msg.save();
+        }
+
+        // After viewed, mark as deleted/consumed
+        msg.deleted = true;
+        msg.text = '📷 Photo viewed';
+        msg.mediaUrl = null;
+        await msg.save();
+
+        const payload = { ...msg.toObject(), timestamp: msg.timestamp.toISOString() };
+        if (msg.roomId) {
+          io.to(msg.roomId).emit(SOCKET_EVENTS.DELETE_MESSAGE, payload);
+        } else {
+          const sndSock = connectedUsers.get(msg.senderId);
+          const recSock = connectedUsers.get(msg.recipientId);
+          if (sndSock) io.to(sndSock).emit(SOCKET_EVENTS.DELETE_MESSAGE, payload);
+          if (recSock) io.to(recSock).emit(SOCKET_EVENTS.DELETE_MESSAGE, payload);
+        }
+      } catch(e) { console.error('view_once_viewed error:', e); }
+    });
+
+    // Forward message
+    socket.on('forward_message', async ({ originalMessageId, targetRoomId, targetRecipientId }) => {
+      try {
+        const original = await Message.findOne({ id: originalMessageId });
+        if (!original || original.deleted) return;
+
+        const forwardedMsg = new Message({
+          id: `msg_${uuidv4()}`,
+          senderId: currentUserId,
+          recipientId: targetRecipientId || null,
+          roomId: targetRoomId || null,
+          text: original.text,
+          mediaUrl: original.mediaUrl,
+          mediaType: original.mediaType,
+          mediaName: original.mediaName,
+          gifUrl: original.gifUrl,
+          isForwarded: true,
+          forwardedFrom: (await User.findOne({ userId: original.senderId }))?.username || 'Unknown',
+          timestamp: new Date(),
+          status: 'sent'
+        });
+        await forwardedMsg.save();
+
+        const payload = { ...forwardedMsg.toObject(), timestamp: forwardedMsg.timestamp.toISOString() };
+        if (targetRoomId) {
+          io.to(targetRoomId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+        } else if (targetRecipientId) {
+          const recSock = connectedUsers.get(targetRecipientId);
+          const sndSock = connectedUsers.get(currentUserId);
+          if (recSock) io.to(recSock).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+          if (sndSock) io.to(sndSock).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+        }
+      } catch(e) { console.error('forward_message error:', e); }
+    });
+
+    // Secret chat message (ephemeral — NOT saved to DB)
+    socket.on('secret_message', ({ recipientId, text, mediaUrl, mediaType }) => {
+      try {
+        const recSock = connectedUsers.get(recipientId);
+        if (recSock) {
+          io.to(recSock).emit('secret_message', {
+            id: `secret_${uuidv4().substring(0,8)}`,
+            senderId: currentUserId,
+            senderName: currentUser.username,
+            recipientId,
+            text,
+            mediaUrl,
+            mediaType,
+            isSecret: true,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch(e) { console.error('secret_message error:', e); }
+    });
+
+    // Update group settings
+    socket.on('update_group_settings', async ({ roomId, name, description, icon, disappearingTimer }) => {
+      try {
+        const room = await Room.findOne({ id: roomId });
+        if (!room) return;
+        if (!room.admins.includes(currentUserId)) return;
+
+        if (name) room.name = sanitizeText(name);
+        if (description !== undefined) room.description = sanitizeText(description);
+        if (icon) room.icon = sanitizeText(icon);
+        if (disappearingTimer !== undefined) room.disappearingTimer = disappearingTimer;
+
+        await room.save();
+        broadcastRoomList();
+        sendSystemNotification(roomId, `Group settings updated by ${currentUser.username}`, { type: 'settings_update' });
+        logActivity('GROUP_SETTINGS', `Room "${room.name}" settings updated by ${currentUser.username}`);
+      } catch(e) { console.error('update_group_settings error:', e); }
+    });
+
+    // Group announcement
+    socket.on('group_announcement', async ({ roomId, text }) => {
+      try {
+        const room = await Room.findOne({ id: roomId });
+        if (!room) return;
+        if (!room.admins.includes(currentUserId) && !room.moderators.includes(currentUserId)) return;
+
+        const announcement = {
+          id: `ann_${uuidv4().substring(0,8)}`,
+          authorId: currentUserId,
+          text: sanitizeText(text),
+          pinned: false,
+          timestamp: new Date()
+        };
+        room.announcements = room.announcements || [];
+        room.announcements.unshift(announcement);
+        if (room.announcements.length > 20) room.announcements = room.announcements.slice(0, 20);
+        await room.save();
+
+        io.to(roomId).emit('group_announcement', { roomId, announcement });
+        sendSystemNotification(roomId, `📢 Announcement: ${text.substring(0, 80)}`, { type: 'announcement', authorId: currentUserId });
+        logActivity('GROUP_ANNOUNCEMENT', `Announcement posted in "${room.name}" by ${currentUser.username}`);
+      } catch(e) { console.error('group_announcement error:', e); }
+    });
+
+    // Group event create
+    socket.on('group_event_create', async ({ roomId, title, description, startTime, endTime }) => {
+      try {
+        const room = await Room.findOne({ id: roomId });
+        if (!room || !room.members.includes(currentUserId)) return;
+
+        const event = {
+          id: `evt_${uuidv4().substring(0,8)}`,
+          title: sanitizeText(title),
+          description: sanitizeText(description || ''),
+          startTime: new Date(startTime),
+          endTime: endTime ? new Date(endTime) : null,
+          creatorId: currentUserId,
+          attendees: [currentUserId],
+          timestamp: new Date()
+        };
+        room.events = room.events || [];
+        room.events.push(event);
+        await room.save();
+
+        io.to(roomId).emit('group_event_created', { roomId, event });
+        sendSystemNotification(roomId, `📅 New event: "${title}"`, { type: 'event', eventId: event.id });
+      } catch(e) { console.error('group_event_create error:', e); }
+    });
+
+    // Group event RSVP (attend / unattend)
+    socket.on('group_event_rsvp', async ({ roomId, eventId, attend }) => {
+      try {
+        const room = await Room.findOne({ id: roomId });
+        if (!room) return;
+        const event = room.events.find(e => e.id === eventId);
+        if (!event) return;
+
+        if (attend && !event.attendees.includes(currentUserId)) event.attendees.push(currentUserId);
+        else if (!attend) event.attendees = event.attendees.filter(id => id !== currentUserId);
+
+        room.markModified('events');
+        await room.save();
+        io.to(roomId).emit('group_event_updated', { roomId, event });
+      } catch(e) { console.error('group_event_rsvp error:', e); }
+    });
+
+    // Remove member from group
+    socket.on('remove_group_member', async ({ roomId, targetUserId }) => {
+      try {
+        const room = await Room.findOne({ id: roomId });
+        if (!room) return;
+        if (!room.admins.includes(currentUserId) && !room.moderators.includes(currentUserId)) return;
+        if (room.creatorId === targetUserId) return; // cannot remove creator
+
+        room.members = room.members.filter(id => id !== targetUserId);
+        room.admins = room.admins.filter(id => id !== targetUserId);
+        room.moderators = room.moderators.filter(id => id !== targetUserId);
+        await room.save();
+
+        const targetSock = connectedUsers.get(targetUserId);
+        if (targetSock) {
+          const ts = io.sockets.sockets.get(targetSock);
+          if (ts) ts.leave(roomId);
+          io.to(targetSock).emit('kicked_from_room', { roomId, roomName: room.name, reason: 'You were removed from this group.' });
+        }
+
+        broadcastRoomList();
+        const target = await User.findOne({ userId: targetUserId });
+        sendSystemNotification(roomId, `${target?.username || targetUserId} was removed from the group.`, { type: 'remove_member' });
+        logActivity('GROUP_REMOVE_MEMBER', `${currentUser.username} removed ${targetUserId} from "${room.name}"`);
+      } catch(e) { console.error('remove_group_member error:', e); }
+    });
+
+    // Update group member role (promote to moderator, demote to member)
+    socket.on('update_member_role', async ({ roomId, targetUserId, role }) => {
+      try {
+        const room = await Room.findOne({ id: roomId });
+        if (!room || !room.admins.includes(currentUserId)) return;
+
+        // Update moderators list
+        if (role === 'moderator' && !room.moderators.includes(targetUserId)) {
+          room.moderators.push(targetUserId);
+        } else if (role === 'member') {
+          room.moderators = room.moderators.filter(id => id !== targetUserId);
+          room.admins = room.admins.filter(id => id !== targetUserId);
+        } else if (role === 'admin' && !room.admins.includes(targetUserId)) {
+          room.admins.push(targetUserId);
+        }
+
+        // Update memberRoles subdoc
+        const existingRole = room.memberRoles.find(mr => mr.userId === targetUserId);
+        if (existingRole) existingRole.role = role;
+        else room.memberRoles.push({ userId: targetUserId, role });
+        room.markModified('memberRoles');
+
+        await room.save();
+        broadcastRoomList();
+        const target = await User.findOne({ userId: targetUserId });
+        sendSystemNotification(roomId, `${target?.username} was set as ${role}.`, { type: 'role_update' });
+        logActivity('GROUP_ROLE_UPDATE', `${currentUser.username} set ${targetUserId} as ${role} in "${room.name}"`);
+      } catch(e) { console.error('update_member_role error:', e); }
+    });
+
+    // Admin broadcast push (called after REST endpoint saves to DB)
+    socket.on('admin_broadcast', async ({ title, body }) => {
+      try {
+        const adminProfile = await Admin.findOne({ adminId: currentUserId });
+        if (!adminProfile) return;
+
+        // Emit real-time notification to all connected users
+        io.emit('broadcast_notification', {
+          type: 'broadcast',
+          title,
+          body,
+          timestamp: new Date().toISOString()
+        });
+
+        logActivity('BROADCAST', `Admin broadcast "${title}" pushed to all connected users.`);
+      } catch(e) { console.error('admin_broadcast error:', e); }
+    });
+
+    // Login alert — emit to other sessions of same user
+    socket.on('login_alert_ack', ({ loginIp }) => {
+      // Acknowledge login alert from client side
+      socket.emit('login_alert_ack', { acknowledged: true, ip: loginIp });
+    });
+
+    // @mention notification in group
+    socket.on('mention_notification', async ({ mentionedUserId, roomId, senderName, messagePreview }) => {
+      try {
+        const mentionSock = connectedUsers.get(mentionedUserId);
+        const notifPayload = {
+          type: 'mention',
+          title: `${senderName} mentioned you`,
+          body: messagePreview,
+          metadata: { roomId, senderId: currentUserId }
+        };
+
+        if (mentionSock) io.to(mentionSock).emit('mention_notification', notifPayload);
+
+        // Save to DB
+        const notif = new Notification({
+          id: `notif_${uuidv4().substring(0,10)}`,
+          userId: mentionedUserId,
+          type: 'mention',
+          title: `${senderName} mentioned you`,
+          body: messagePreview,
+          metadata: { roomId, senderId: currentUserId }
+        });
+        await notif.save();
+      } catch(e) { console.error('mention_notification error:', e); }
+    });
+
+    // Login alert — push to user's other active sessions
+    socket.on('push_login_alert', async ({ userId, ip, userAgent }) => {
+      try {
+        const sockId = connectedUsers.get(userId);
+        if (sockId && sockId !== socket.id) {
+          io.to(sockId).emit('login_alert', { ip, userAgent, timestamp: new Date().toISOString() });
+        }
+        const notif = new Notification({
+          id: `notif_${uuidv4().substring(0,10)}`,
+          userId,
+          type: 'login_alert',
+          title: 'New Login Detected',
+          body: `A new login was detected from IP: ${ip}`,
+          metadata: { ip, userAgent }
+        });
+        await notif.save();
+      } catch(e) { console.error('push_login_alert error:', e); }
+    });
+
+    // ─── END NEW FEATURES ─────────────────────────────────────────────────────
 
     // Disconnect Handle
     socket.on('disconnect', async () => {

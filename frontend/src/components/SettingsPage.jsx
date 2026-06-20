@@ -1,6 +1,6 @@
 // frontend/src/components/SettingsPage.jsx
 import React, { useState } from 'react';
-import { User, Palette, Eye, Download, Save, Moon, Sun, Check, Shield } from 'lucide-react';
+import { User, Palette, Eye, Download, Save, Moon, Sun, Check, Shield, ArrowLeft } from 'lucide-react';
 
 const PALETTE_OPTIONS = [
   { id: 'teal', name: 'Cyber Teal', color: 'hsl(164, 85%, 36%)', hover: 'hsl(164, 85%, 28%)', light: 'hsl(164, 85%, 94%)' },
@@ -18,7 +18,8 @@ function SettingsPage({
   toggleTheme,
   showToast,
   messages,
-  setActiveTab
+  setActiveTab,
+  isMobile
 }) {
   const [activeSubTab, setActiveSubTab] = useState('profile');
 
@@ -92,6 +93,22 @@ function SettingsPage({
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
+        {isMobile && (
+          <button 
+            onClick={() => setActiveTab('chats')} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              cursor: 'pointer', 
+              color: 'var(--text-primary)', 
+              display: 'flex', 
+              padding: '8px',
+              marginLeft: '-8px'
+            }}
+          >
+            <ArrowLeft size={24} />
+          </button>
+        )}
         <div style={{ backgroundColor: 'var(--primary)', color: '#fff', padding: '8px', borderRadius: '8px' }}>
           <Palette size={24} />
         </div>

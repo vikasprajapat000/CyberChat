@@ -650,7 +650,7 @@ function ChatArea({
         
         {/* Chat Area Header Banner */}
         <div style={{
-          padding: '12px 24px',
+          padding: isMobile ? '10px 12px' : '12px 24px',
           borderBottom: '1px solid var(--border-glass)',
           backgroundColor: 'var(--bg-panel)',
           display: 'flex',
@@ -1181,7 +1181,7 @@ function ChatArea({
 
         {/* Message Compose Panel */}
         <div style={{
-          padding: '12px 24px',
+          padding: isMobile ? '10px 12px' : '12px 24px',
           borderTop: '1px solid var(--border-glass)',
           backgroundColor: 'var(--bg-panel)',
           position: 'relative',
@@ -1295,7 +1295,7 @@ function ChatArea({
           )}
 
           {/* Composer Form Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px' }}>
             
             {/* Attachment picker */}
             <button
@@ -1387,7 +1387,7 @@ function ChatArea({
                 disabled={!connected || uploading}
                 style={{
                   flex: 1,
-                  padding: '12px 18px',
+                  padding: isMobile ? '10px 12px' : '12px 18px',
                   borderRadius: 'var(--radius-lg)',
                   border: '1px solid var(--border-glass)',
                   backgroundColor: 'var(--bg-app)',
@@ -1409,12 +1409,13 @@ function ChatArea({
                     color: '#fff',
                     border: 'none',
                     borderRadius: '50%',
-                    width: '42px',
-                    height: '42px',
+                    width: isMobile ? '36px' : '42px',
+                    height: isMobile ? '36px' : '42px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    flexShrink: 0
                   }}
                 >
                   <Send size={16} />
@@ -1430,12 +1431,13 @@ function ChatArea({
                     color: 'var(--text-secondary)',
                     border: 'none',
                     borderRadius: '50%',
-                    width: '42px',
-                    height: '42px',
+                    width: isMobile ? '36px' : '42px',
+                    height: isMobile ? '36px' : '42px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    flexShrink: 0
                   }}
                 >
                   <Mic size={18} />

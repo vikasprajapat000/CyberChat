@@ -65,6 +65,8 @@ function ChatLayout({
           onlineUsers={onlineUsers}
           showToast={showToast}
           messages={messages}
+          setActiveTab={setActiveTab}
+          isMobile={isMobile}
         />
       );
     }
@@ -79,6 +81,7 @@ function ChatLayout({
           showToast={showToast}
           messages={messages}
           setActiveTab={setActiveTab}
+          isMobile={isMobile}
         />
       );
     }
@@ -106,16 +109,9 @@ function ChatLayout({
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100vh',
-      width: '100vw',
-      backgroundColor: 'var(--bg-app)',
-      color: 'var(--text-primary)',
-      overflow: 'hidden'
-    }}>
+    <div className="app-container">
       {/* Sidebar Panel Column */}
-      {(!isMobile || (!activeChat && activeTab !== 'admin')) && (
+      {(!isMobile || (!activeChat && activeTab !== 'admin' && activeTab !== 'settings')) && (
         <div style={{
           width: isMobile ? '100%' : '440px', // slightly wider sidebar to fit mini-nav tab cleanly
           height: '100%',

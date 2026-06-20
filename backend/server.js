@@ -13,11 +13,24 @@ const { SOCKET_EVENTS } = require('../shared/constants.json');
 const registerSocketHandlers = require('./socketHandler');
 const mongoose = require('mongoose');
 const { router: authRouter } = require('./routes/auth');
+const { router: usersRouter } = require('./routes/users');
+const notificationsRouter = require('./routes/notifications');
+const adminRouter = require('./routes/admin');
+
+// Models (required early to ensure TTL indexes are created on startup)
+const Message = require('./models/Message');
+const Notification = require('./models/Notification');
+const CallHistory = require('./models/CallHistory');
 
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vikasprajapat20004_db_user:7IXmzc3isvDSs2jD@cluster0.kiyfv7l.mongodb.net/cyberchat?appName=Cluster0';
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB successfully!'))
+  .then(async () => {
+    console.log('Connected to MongoDB successfully!');
+    // Ensure TTL index on disappearsAt field for auto message deletion
+    await Message.collection.createIndex({ disappearsAt: 1 }, { expireAfterSeconds: 0, sparse: true });
+    console.log('[CyberChat] TTL index on Message.disappearsAt set.');
+  })
   .catch((err) => console.error('MongoDB connection error:', err));
 
 const app = express();
@@ -41,8 +54,8 @@ app.set('trust proxy', 1);
 
 // Apply Rate Limiting to HTTP routes
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per 15m
+  windowMs: 15 * 60 * 1000,
+  max: 150,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests from this IP, please try again later.' }
@@ -52,7 +65,12 @@ app.use('/api', apiLimiter);
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/admin', adminRouter);
 
 // Ensure upload directory exists
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
@@ -69,7 +87,6 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    // Generate unique name keeping extension
     const ext = path.extname(file.originalname);
     const uniqueName = `${uuidv4()}${ext}`;
     cb(null, uniqueName);
@@ -78,7 +95,17 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit (increased for video calls recording)
+  fileFilter: (req, file, cb) => {
+    // Allow images, audio, video, documents, and GIFs
+    const allowed = /jpeg|jpg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf|doc|docx|txt|zip/;
+    const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+    if (allowed.test(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type .${ext} is not allowed`));
+    }
+  }
 });
 
 // File upload endpoint
@@ -88,14 +115,12 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Determine type category (image or file)
     const mimeType = req.file.mimetype;
     let fileType = 'file';
-    if (mimeType.startsWith('image/')) {
-      fileType = 'image';
-    }
+    if (mimeType.startsWith('image/')) fileType = 'image';
+    else if (mimeType.startsWith('video/')) fileType = 'video';
+    else if (mimeType.startsWith('audio/')) fileType = 'audio';
 
-    // Construct local path URL (frontend will combine this with host if needed)
     const fileUrl = `/uploads/${req.file.filename}`;
 
     res.json({
@@ -110,6 +135,81 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
   }
 });
 
+// Profile photo upload
+app.post('/api/upload/profile-photo', upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
+
+    // Verify JWT
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'cyberchat_jwt_secret_key';
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Token missing' });
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const User = require('./models/User');
+    const user = await User.findOne({ userId: decoded.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Delete old profile photo
+    if (user.profilePhoto) {
+      const oldPath = path.join(uploadsDir, path.basename(user.profilePhoto));
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    user.profilePhoto = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    res.json({ success: true, profilePhoto: user.profilePhoto });
+  } catch (error) {
+    console.error('Profile Photo Upload Error:', error);
+    res.status(500).json({ error: 'Failed to upload photo' });
+  }
+});
+
+// Cover photo upload
+app.post('/api/upload/cover-photo', upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
+
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'cyberchat_jwt_secret_key';
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Token missing' });
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const User = require('./models/User');
+    const user = await User.findOne({ userId: decoded.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.coverPhoto) {
+      const oldPath = path.join(uploadsDir, path.basename(user.coverPhoto));
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    user.coverPhoto = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    res.json({ success: true, coverPhoto: user.coverPhoto });
+  } catch (error) {
+    console.error('Cover Photo Upload Error:', error);
+    res.status(500).json({ error: 'Failed to upload photo' });
+  }
+});
+
+// Group photo upload
+app.post('/api/upload/group-photo', upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No photo uploaded' });
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ success: true, groupPhoto: fileUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to upload group photo' });
+  }
+});
+
 // Root check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
@@ -118,7 +218,7 @@ app.get('/api/health', (req, res) => {
 // Configure Socket.IO
 const io = new Server(server, {
   cors: corsOptions,
-  maxHttpBufferSize: 1e7 // Increase buffer size for large events
+  maxHttpBufferSize: 1e7
 });
 
 const jwt = require('jsonwebtoken');
@@ -131,7 +231,7 @@ io.use((socket, next) => {
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    socket.user = decoded; // { id, username, email, role }
+    socket.user = decoded;
     next();
   } catch (err) {
     return next(new Error('Authentication error: Invalid token'));
@@ -140,10 +240,10 @@ io.use((socket, next) => {
 
 // State Store (In-Memory)
 const memoryState = {
-  users: new Map(),        // userId -> { id, username, socketId, status, lastSeen, blockedUsers: [], mutedUsers: [] }
-  rooms: new Map(),        // roomId -> { id, name, type, members: [userId], creatorId }
-  messages: [],            // array of messages
-  typingStates: new Map()  // roomId -> Set of userIds
+  users: new Map(),
+  rooms: new Map(),
+  messages: [],
+  typingStates: new Map()
 };
 
 // Initialize Socket Handlers

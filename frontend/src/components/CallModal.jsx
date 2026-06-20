@@ -17,7 +17,8 @@ function CallModal({
   videoMuted,
   startScreenShare,
   stopScreenShare,
-  isSharingScreen
+  isSharingScreen,
+  isMobile
 }) {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -66,7 +67,7 @@ function CallModal({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: isMobile ? '0' : '24px'
     }}>
       {/* A. Ringing Dialog (Receiving Call) */}
       {callState === 'receiving' && (
@@ -220,10 +221,10 @@ function CallModal({
           style={{
             position: 'relative',
             width: '100%',
-            maxWidth: '960px',
-            height: '80vh',
-            maxHeight: '680px',
-            borderRadius: '24px',
+            maxWidth: isMobile ? '100%' : '960px',
+            height: isMobile ? '100dvh' : '80vh',
+            maxHeight: isMobile ? '100%' : '680px',
+            borderRadius: isMobile ? '0' : '24px',
             overflow: 'hidden',
             backgroundColor: '#1c2024',
             boxShadow: 'var(--shadow-lg)',

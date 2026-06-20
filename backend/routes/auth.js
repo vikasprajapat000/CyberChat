@@ -35,7 +35,6 @@ router.post('/register-user', async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // Check if user already exists
     const existingEmail = await User.findOne({ email: email.toLowerCase() });
     if (existingEmail) {
       return res.status(400).json({ error: 'Email is already registered' });
@@ -46,7 +45,6 @@ router.post('/register-user', async (req, res) => {
       return res.status(400).json({ error: 'User ID is already taken' });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = new User({
@@ -73,12 +71,10 @@ router.post('/register-admin', async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // Validate secret key
     if (adminSecretKey !== ADMIN_SECRET_KEY) {
       return res.status(400).json({ error: 'Incorrect Admin Secret Key' });
     }
 
-    // Check if admin/user already exists
     const existingEmail = await Admin.findOne({ email: email.toLowerCase() });
     if (existingEmail) {
       return res.status(400).json({ error: 'Email is already registered' });
@@ -89,7 +85,6 @@ router.post('/register-admin', async (req, res) => {
       return res.status(400).json({ error: 'Admin ID is already taken' });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newAdmin = new Admin({
@@ -116,12 +111,10 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'ID and Password are required' });
     }
 
-    // A. Check User Collection
     let account = await User.findOne({ userId: id });
     let role = 'user';
 
     if (!account) {
-      // B. Check Admin Collection
       account = await Admin.findOne({ adminId: id });
       role = 'admin';
     }
@@ -130,7 +123,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid ID or Password' });
     }
 
-    // Compare passwords
     const isMatch = await bcrypt.compare(password, account.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid ID or Password' });
@@ -140,7 +132,21 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: 'Your account is suspended by an administrator.' });
     }
 
-    // Generate JWT token
+    if (role === 'user' && account.isBanned) {
+      return res.status(403).json({ error: 'Your account has been permanently banned.' });
+    }
+
+    // Record login IP for login alert
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    if (role === 'user' && account.loginAlerts) {
+      account.loginHistory = account.loginHistory || [];
+      account.loginHistory.unshift({ ip: clientIp, userAgent, timestamp: new Date() });
+      if (account.loginHistory.length > 10) account.loginHistory = account.loginHistory.slice(0, 10);
+      await account.save();
+    }
+
     const token = jwt.sign(
       {
         id: role === 'user' ? account.userId : account.adminId,
@@ -155,6 +161,7 @@ router.post('/login', async (req, res) => {
     res.json({
       success: true,
       token,
+      loginIp: clientIp,
       user: {
         id: role === 'user' ? account.userId : account.adminId,
         username: role === 'user' ? account.username : account.adminName,
@@ -162,14 +169,27 @@ router.post('/login', async (req, res) => {
         role: role,
         bio: role === 'user' ? account.bio : 'Server Administrator',
         statusMsg: role === 'user' ? account.statusMsg : 'Active',
+        profilePhoto: role === 'user' ? account.profilePhoto : null,
+        coverPhoto: role === 'user' ? account.coverPhoto : null,
         customThemeColor: role === 'user' ? account.customThemeColor : '#00a884',
         lastSeenSetting: role === 'user' ? account.lastSeenSetting : 'everyone',
         onlineVisibility: role === 'user' ? account.onlineVisibility : 'visible',
+        profilePhotoVisibility: role === 'user' ? account.profilePhotoVisibility : 'everyone',
         blockedUsers: role === 'user' ? account.blockedUsers : [],
         mutedUsers: role === 'user' ? account.mutedUsers : [],
         contacts: role === 'user' ? (account.contacts || []) : [],
         sentRequests: role === 'user' ? (account.sentRequests || []) : [],
-        receivedRequests: role === 'user' ? (account.receivedRequests || []) : []
+        receivedRequests: role === 'user' ? (account.receivedRequests || []) : [],
+        followers: role === 'user' ? (account.followers || []) : [],
+        following: role === 'user' ? (account.following || []) : [],
+        pinLock: role === 'user' ? !!account.pinLock : false,
+        fingerprintEnabled: role === 'user' ? account.fingerprintEnabled : false,
+        loginAlerts: role === 'user' ? account.loginAlerts : false,
+        e2eEnabled: role === 'user' ? account.e2eEnabled : false,
+        disappearingMessageTimer: role === 'user' ? account.disappearingMessageTimer : 0,
+        notificationSettings: role === 'user' ? account.notificationSettings : {},
+        language: role === 'user' ? account.language : 'en',
+        loginHistory: role === 'user' && account.loginAlerts ? (account.loginHistory || []).slice(0, 5) : []
       }
     });
   } catch (error) {
@@ -178,7 +198,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 4. Forgot Password (Mock recovery verify)
+// 4. Forgot Password
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -186,7 +206,6 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    // Check if account exists in either User or Admin
     const user = await User.findOne({ email: email.toLowerCase() });
     const admin = await Admin.findOne({ email: email.toLowerCase() });
 
@@ -194,7 +213,6 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(404).json({ error: 'No account registered with this email address.' });
     }
 
-    // Return a mock reset key code for demo/testing
     const resetToken = jwt.sign(
       { email: email.toLowerCase() },
       JWT_SECRET,
@@ -204,7 +222,7 @@ router.post('/forgot-password', async (req, res) => {
     res.json({
       success: true,
       message: 'Demo Recovery Code generated. Check output parameters below to reset.',
-      resetToken // In production we send a link, here we return it to let user reset easily
+      resetToken
     });
   } catch (error) {
     console.error('Forgot Password Error:', error);
@@ -231,7 +249,6 @@ router.post('/reset-password', async (req, res) => {
     const email = decoded.email;
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update in User or Admin
     let user = await User.findOneAndUpdate({ email }, { password: hashedPassword });
     if (!user) {
       await Admin.findOneAndUpdate({ email }, { password: hashedPassword });
@@ -244,7 +261,79 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// 6. Verify Session /me
+// 6. Change Password (authenticated)
+router.post('/change-password', verifyToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const { id, role } = req.user;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both current and new password are required' });
+    }
+
+    let account;
+    if (role === 'admin') {
+      account = await Admin.findOne({ adminId: id });
+    } else {
+      account = await User.findOne({ userId: id });
+    }
+
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const isMatch = await bcrypt.compare(currentPassword, account.password);
+    if (!isMatch) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    account.password = await bcrypt.hash(newPassword, 10);
+    await account.save();
+
+    res.json({ success: true, message: 'Password changed successfully.' });
+  } catch (error) {
+    console.error('Change Password Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 7. Set / Verify PIN Lock
+router.post('/pin-lock', verifyToken, async (req, res) => {
+  try {
+    const { action, pin } = req.body;
+    const { id, role } = req.user;
+
+    if (role !== 'user') return res.status(403).json({ error: 'Not allowed' });
+    if (!pin || pin.length !== 4) return res.status(400).json({ error: 'PIN must be 4 digits' });
+
+    const user = await User.findOne({ userId: id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (action === 'set') {
+      user.pinLock = await bcrypt.hash(pin, 10);
+      await user.save();
+      return res.json({ success: true, message: 'PIN Lock set successfully.' });
+    }
+
+    if (action === 'verify') {
+      if (!user.pinLock) return res.status(400).json({ error: 'No PIN set' });
+      const match = await bcrypt.compare(pin, user.pinLock);
+      return res.json({ success: match, message: match ? 'PIN verified.' : 'Incorrect PIN.' });
+    }
+
+    if (action === 'remove') {
+      if (!user.pinLock) return res.status(400).json({ error: 'No PIN set' });
+      const match = await bcrypt.compare(pin, user.pinLock);
+      if (!match) return res.status(401).json({ error: 'Incorrect PIN' });
+      user.pinLock = null;
+      await user.save();
+      return res.json({ success: true, message: 'PIN Lock removed.' });
+    }
+
+    res.status(400).json({ error: 'Invalid action. Use set, verify, or remove.' });
+  } catch (error) {
+    console.error('PIN Lock Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 8. Verify Session /me
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const { id, role } = req.user;
@@ -269,14 +358,26 @@ router.get('/me', verifyToken, async (req, res) => {
         role: role,
         bio: role === 'admin' ? 'Server Administrator' : account.bio,
         statusMsg: role === 'admin' ? 'Active' : account.statusMsg,
+        profilePhoto: role === 'admin' ? null : account.profilePhoto,
+        coverPhoto: role === 'admin' ? null : account.coverPhoto,
         customThemeColor: role === 'admin' ? '#00a884' : account.customThemeColor,
         lastSeenSetting: role === 'admin' ? 'everyone' : account.lastSeenSetting,
         onlineVisibility: role === 'admin' ? 'visible' : account.onlineVisibility,
+        profilePhotoVisibility: role === 'admin' ? 'everyone' : account.profilePhotoVisibility,
         blockedUsers: role === 'admin' ? [] : account.blockedUsers,
         mutedUsers: role === 'admin' ? [] : account.mutedUsers,
         contacts: role === 'admin' ? [] : (account.contacts || []),
         sentRequests: role === 'admin' ? [] : (account.sentRequests || []),
-        receivedRequests: role === 'admin' ? [] : (account.receivedRequests || [])
+        receivedRequests: role === 'admin' ? [] : (account.receivedRequests || []),
+        followers: role === 'admin' ? [] : (account.followers || []),
+        following: role === 'admin' ? [] : (account.following || []),
+        pinLock: role === 'admin' ? false : !!account.pinLock,
+        fingerprintEnabled: role === 'admin' ? false : account.fingerprintEnabled,
+        loginAlerts: role === 'admin' ? false : account.loginAlerts,
+        e2eEnabled: role === 'admin' ? false : account.e2eEnabled,
+        disappearingMessageTimer: role === 'admin' ? 0 : account.disappearingMessageTimer,
+        notificationSettings: role === 'admin' ? {} : account.notificationSettings,
+        language: role === 'admin' ? 'en' : account.language
       }
     });
   } catch (error) {
