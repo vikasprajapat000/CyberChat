@@ -1,0 +1,329 @@
+/* frontend/src/index.css */
+:root {
+  /* Common typography and settings */
+  --font-primary: 'Plus Jakarta Sans', 'Outfit', system-ui, -apple-system, sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+  
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.08), 0 4px 12px -4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 20px 32px -8px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.06);
+
+  /* Light Theme Variables (Modern Teal & Ice) */
+  --bg-app: #f0f2f5;
+  --bg-sidebar: #ffffff;
+  --bg-chat: #efeae2; /* Warm classic Whatsapp base */
+  --bg-panel: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --border-glass: rgba(0, 0, 0, 0.08);
+  
+  --primary: hsl(164, 85%, 36%);
+  --primary-hover: hsl(164, 85%, 28%);
+  --primary-light: hsl(164, 85%, 94%);
+  --accent: hsl(210, 95%, 45%);
+  --danger: hsl(354, 70%, 53%);
+  --warning: hsl(45, 90%, 50%);
+  --success: hsl(145, 80%, 40%);
+  
+  --text-primary: #1e293b;
+  --text-secondary: #54656f;
+  --text-muted: #8696a0;
+  --text-on-primary: #ffffff;
+  
+  --msg-sent: #d9fdd3;
+  --msg-sent-text: #111b21;
+  --msg-received: #ffffff;
+  --msg-received-text: #111b21;
+  --msg-system: rgba(255, 255, 255, 0.95);
+  --msg-system-text: #54656f;
+  
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-track: transparent;
+  
+  /* Left mini-sidebar (Discord style) */
+  --bg-nav: #e3e6eb;
+  --color-nav-icon: #4f5660;
+  --color-nav-active: #ffffff;
+}
+
+/* Dark Theme Variables (Midnight Glass & Cyber Teal) */
+[data-theme='dark'] {
+  --bg-app: #0b141a;
+  --bg-sidebar: #111b21;
+  --bg-chat: #0b141a;
+  --bg-panel: #202c33;
+  --bg-glass: rgba(32, 44, 51, 0.75);
+  --border-glass: rgba(255, 255, 255, 0.1);
+  
+  --primary: hsl(164, 75%, 45%);
+  --primary-hover: hsl(164, 75%, 55%);
+  --primary-light: rgba(0, 168, 132, 0.15);
+  --accent: hsl(210, 95%, 55%);
+  --danger: hsl(354, 85%, 60%);
+  --warning: hsl(45, 95%, 55%);
+  --success: hsl(145, 80%, 50%);
+  
+  --text-primary: #e9edef;
+  --text-secondary: #8696a0;
+  --text-muted: #667781;
+  --text-on-primary: #111b21;
+  
+  --msg-sent: #005c4b;
+  --msg-sent-text: #e9edef;
+  --msg-received: #202c33;
+  --msg-received-text: #e9edef;
+  --msg-system: #182229;
+  --msg-system-text: #8696a0;
+  
+  --scrollbar-thumb: #374248;
+  --scrollbar-track: transparent;
+  
+  --bg-nav: #080d10;
+  --color-nav-icon: #8696a0;
+  --color-nav-active: #00a884;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  transition: background-color var(--transition-normal);
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulseBorder {
+  0% { box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(0, 168, 132, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-3deg); }
+  75% { transform: rotate(3deg); }
+}
+
+.animate-fade {
+  animation: fadeIn var(--transition-normal) forwards;
+}
+
+.animate-slide {
+  animation: slideUp var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale {
+  animation: scaleIn var(--transition-fast) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+}
+
+.glass-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.glass-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Avatar styling */
+.initials-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #fff;
+  border-radius: var(--radius-full);
+  user-select: none;
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Background generator for initials avatars */
+.bg-av-1 { background: linear-gradient(135deg, #FF6B6B, #FF8E53); }
+.bg-av-2 { background: linear-gradient(135deg, #4E54C8, #8F94FB); }
+.bg-av-3 { background: linear-gradient(135deg, #11998E, #38EF7D); }
+.bg-av-4 { background: linear-gradient(135deg, #FC466B, #3F5EFB); }
+.bg-av-5 { background: linear-gradient(135deg, #f12711, #f5af19); }
+.bg-av-6 { background: linear-gradient(135deg, #7F00FF, #E100FF); }
+.bg-av-7 { background: linear-gradient(135deg, #00c6ff, #0072ff); }
+.bg-av-8 { background: linear-gradient(135deg, #F9D423, #FF4E50); }
+
+/* Custom emoji button and utility tooltips */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px) scale(0.9);
+  padding: 6px 10px;
+  background: #1e293b;
+  color: #fff;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+
+[data-tooltip]:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-6px) scale(1);
+}
+
+/* Ticks style definitions */
+.ticks-sent { color: var(--text-muted); }
+.ticks-delivered { color: var(--text-muted); }
+.ticks-seen { color: #53bdeb; }
+
+/* Emoji reactions styling badges */
+.reaction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-glass);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  color: var(--text-primary);
+}
+
+.reaction-badge:hover {
+  background-color: var(--border-glass);
+}
+
+.reaction-badge.active {
+  background-color: var(--primary-light);
+  border-color: var(--primary);
+}
+
+/* Left mini Discord sidebar tabs */
+.nav-tab-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--bg-panel);
+  color: var(--color-nav-icon);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  position: relative;
+  transition: border-radius var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.nav-tab-btn:hover, .nav-tab-btn.active {
+  border-radius: 12px;
+  background-color: var(--primary);
+  color: var(--text-on-primary);
+}
+
+.nav-tab-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 14px;
+  width: 4px;
+  height: 20px;
+  background-color: var(--primary);
+  border-radius: 0 4px 4px 0;
+}
+
+@media (max-width: 768px) {
+  .nav-tab-btn.active::before {
+    left: 50%;
+    top: -8px;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 4px;
+    border-radius: 0 0 4px 4px;
+  }
+}
+
+/* Pulse indicator for warnings */
+.ping-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.ping-excellent { background-color: var(--success); }
+.ping-fair { background-color: var(--warning); }
+.ping-poor { background-color: var(--danger); animation: pulseBorder 1.5s infinite; }
