@@ -4,11 +4,15 @@ import {
   Search, MessageSquarePlus, LogOut, Volume2, VolumeX, Bell, BellOff,
   User, Hash, Circle, RefreshCw, X, ShieldAlert, Star, Lock,
   MessageSquare, LayoutGrid, Key, Calendar, Save, ClipboardList, PenTool,
-  UserPlus
+  UserPlus, MoreHorizontal, Trash2, Pin, Archive, Map, Flame,
+  Camera, Bot, Globe, Tv, Crown
 } from 'lucide-react';
+import MyProfileModal from './MyProfileModal';
+import SnapMapModal from './SnapMapModal';
 
 function Sidebar({
   user,
+  onUserUpdate,
   connected,
   rooms,
   onlineUsers,
@@ -26,9 +30,19 @@ function Sidebar({
   setActiveTab,
   showToast,
   messages,
-  isMobile
+  isMobile,
+  isSelectionMode,
+  setIsSelectionMode,
+  selectedMessageIds,
+  setSelectedMessageIds
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  const [showArchivedOnly, setShowArchivedOnly] = useState(false);
+  const [showSnapMap, setShowSnapMap] = useState(false);
+  const [hoveredId, setHoveredId] = useState(null);
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
   
   // Room Creation states
   const [showCreateRoom, setShowCreateRoom] = useState(false);
@@ -74,6 +88,23 @@ function Sidebar({
     };
   }, [user.id]);
 
+  const handleClearActiveChat = () => {
+    if (!socket || !connected || !activeChat) return;
+    const confirmClear = window.confirm('Are you sure you want to permanently clear this chat history? This action cannot be undone.');
+    if (confirmClear) {
+      socket.emit('clear_chat_history', {
+        roomId: activeChat.type === 'group' ? activeChat.id : null,
+        recipientId: activeChat.type === 'direct' ? activeChat.id : null,
+        senderId: user.id
+      });
+    }
+  };
+
+  const handleStartSelectionMode = () => {
+    setIsSelectionMode(true);
+    setSelectedMessageIds([]);
+  };
+
   const getInitials = (name) => {
     if (!name) return '?';
     const parts = name.trim().split(/\s+/);
@@ -89,6 +120,41 @@ function Sidebar({
     }
     const idx = (code % 8) + 1;
     return `bg-av-${idx}`;
+  };
+
+  const renderAvatar = (userObj, size = '36px', fontSize = '14px') => {
+    if (!userObj) return null;
+    return (
+      <div style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        backgroundColor: '#1e293b',
+        border: '1.5px solid var(--border-glass)',
+        boxShadow: 'var(--shadow-sm)',
+        position: 'relative'
+      }}>
+        {userObj.profilePhoto ? (
+          <img 
+            src={`${BACKEND_URL}${userObj.profilePhoto}`} 
+            alt={userObj.username} 
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+          />
+        ) : (
+          <div 
+            className={`initials-avatar ${getAvatarBgClass(userObj.username)}`}
+            style={{ width: '100%', height: '100%', fontSize: fontSize, display: 'flex', alignItems: 'center', justify: 'center' }}
+          >
+            {getInitials(userObj.username)}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handleCreateRoomSubmit = (e) => {
@@ -192,15 +258,39 @@ function Sidebar({
     room.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getStreak = (username) => {
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
+    return (hash % 12) + 2; 
+  };
+
+  const getFriendEmoji = (username) => {
+    const emojis = ['😎', '✨', '👾', '🔥', '👑', '🌈', '⚡', '🦄'];
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
+    return emojis[hash % emojis.length];
+  };
+
   // Contacts and Request filters
   const myContacts = onlineUsers.filter(u => 
     u.id !== user.id && 
     (user.contacts || []).includes(u.id)
   );
 
-  const filteredContacts = myContacts.filter(u => 
+  const displayContacts = myContacts.filter(u => {
+    const isArchived = user.archivedChats?.includes(u.id);
+    return showArchivedOnly ? isArchived : !isArchived;
+  });
+
+  const filteredContacts = displayContacts.filter(u => 
     u.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const sortedContacts = [...filteredContacts].sort((a, b) => {
+    const aPinned = user.pinnedChats?.includes(a.id) ? 1 : 0;
+    const bPinned = user.pinnedChats?.includes(b.id) ? 1 : 0;
+    return bPinned - aPinned;
+  });
 
   const discoverUsers = onlineUsers.filter(u => 
     u.id !== user.id && 
@@ -293,9 +383,70 @@ function Sidebar({
           <LayoutGrid size={20} />
         </button>
 
+        {/* Snap Map Button */}
+        <button
+          onClick={() => setShowSnapMap(true)}
+          className="nav-tab-btn"
+          data-tooltip="Snap Map Grid"
+        >
+          <Map size={20} />
+        </button>
+
+        {/* Stories Tab */}
+        <button
+          id="nav-tab-stories"
+          onClick={() => setActiveTab('stories')}
+          className={`nav-tab-btn ${activeTab === 'stories' ? 'active' : ''}`}
+          data-tooltip="Stories & Status"
+        >
+          <Camera size={20} />
+        </button>
+
+        {/* AI Tab */}
+        <button
+          id="nav-tab-ai"
+          onClick={() => setActiveTab('ai')}
+          className={`nav-tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
+          data-tooltip="CyberAI Assistant"
+        >
+          <Bot size={20} />
+        </button>
+
+        {/* Communities Tab */}
+        <button
+          id="nav-tab-communities"
+          onClick={() => setActiveTab('communities')}
+          className={`nav-tab-btn ${activeTab === 'communities' ? 'active' : ''}`}
+          data-tooltip="Communities"
+        >
+          <Globe size={20} />
+        </button>
+
+        {/* Channels Tab */}
+        <button
+          id="nav-tab-channels"
+          onClick={() => setActiveTab('channels')}
+          className={`nav-tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
+          data-tooltip="Broadcast Channels"
+        >
+          <Tv size={20} />
+        </button>
+
+        {/* Premium Tab */}
+        <button
+          id="nav-tab-premium"
+          onClick={() => setActiveTab('premium')}
+          className={`nav-tab-btn ${activeTab === 'premium' ? 'active' : ''}`}
+          data-tooltip="Premium Plans"
+          style={activeTab === 'premium' ? { color: '#a855f7' } : {}}
+        >
+          <Crown size={20} />
+        </button>
+
         {/* Admin Dashboard (visible to Admins only) */}
         {user.isAdmin && (
           <button
+            id="nav-tab-admin"
             onClick={() => setActiveTab('admin')}
             className={`nav-tab-btn ${activeTab === 'admin' ? 'active' : ''}`}
             data-tooltip="Admin Control Panel"
@@ -306,7 +457,7 @@ function Sidebar({
       </div>
 
       {/* 2. Main Sidebar Content Column */}
-      {activeTab !== 'admin' && activeTab !== 'settings' && (
+      {activeTab !== 'admin' && activeTab !== 'settings' && activeTab !== 'stories' && activeTab !== 'ai' && activeTab !== 'communities' && activeTab !== 'channels' && activeTab !== 'premium' && (
         <div style={{
           flex: 1,
           display: 'flex',
@@ -324,14 +475,8 @@ function Sidebar({
             backgroundColor: 'var(--bg-panel)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ position: 'relative' }}>
-                <div 
-                  className={`initials-avatar ${getAvatarBgClass(user.username)}`} 
-                  style={{ width: '36px', height: '36px', fontSize: '14px', flexShrink: 0, cursor: 'pointer' }}
-                  onClick={() => setShowProfileMenu(!showProfileMenu)}
-                >
-                  {getInitials(user.username)}
-                </div>
+              <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowProfileMenu(!showProfileMenu)}>
+                {renderAvatar(user, '36px', '14px')}
                 
                 {/* Profile Dropdown Menu */}
                 {showProfileMenu && (
@@ -394,15 +539,134 @@ function Sidebar({
               </div>
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'Outfit', color: 'var(--text-primary)' }}>
-                  {activeTab === 'chats' && 'Cyber Chat'}
+                  {activeTab === 'chats' && 'CyberChat'}
                   {activeTab === 'productivity' && 'Workspace Center'}
                   {activeTab === 'starred' && 'Starred Items'}
+                  {activeTab === 'stories' && 'Stories'}
+                  {activeTab === 'ai' && 'CyberAI'}
+                  {activeTab === 'communities' && 'Communities'}
+                  {activeTab === 'channels' && 'Channels'}
+                  {activeTab === 'premium' && 'Premium'}
                 </h2>
                 <span style={{ fontSize: '11px', color: connected ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
                   <Circle size={8} fill={connected ? 'var(--success)' : 'var(--warning)'} stroke="none" />
                   {connected ? 'Sync Connected' : 'Reconnecting...'}
                 </span>
               </div>
+            </div>
+
+            {/* Menu Options (Three Dot Menu) */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowThreeDotMenu(!showThreeDotMenu)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  padding: '8px',
+                  borderRadius: '50%',
+                  transition: 'background-color var(--transition-fast)'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                data-tooltip="Menu Options"
+              >
+                <MoreHorizontal size={20} />
+              </button>
+
+              {showThreeDotMenu && (
+                <>
+                  <div 
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
+                    onClick={() => setShowThreeDotMenu(false)}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    top: '36px',
+                    right: '0',
+                    backgroundColor: 'var(--bg-panel)',
+                    border: '1px solid var(--border-glass)',
+                    borderRadius: '8px',
+                    boxShadow: 'var(--shadow-md)',
+                    zIndex: 100,
+                    width: '200px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '8px',
+                    textAlign: 'left'
+                  }}>
+                    {/* My Profile */}
+                    <button
+                      onClick={() => { setShowThreeDotMenu(false); setShowMyProfileModal(true); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <User size={16} />
+                      My Profile Info
+                    </button>
+
+                    {/* Delete Active Chat / Select to Delete */}
+                    {activeChat && (
+                      <>
+                        <button
+                          onClick={() => { setShowThreeDotMenu(false); handleClearActiveChat(); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <Trash2 size={16} />
+                          Clear Chat History
+                        </button>
+                        <button
+                          onClick={() => { setShowThreeDotMenu(false); handleStartSelectionMode(); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <ClipboardList size={16} />
+                          Select to Delete
+                        </button>
+                      </>
+                    )}
+
+                    {/* Workspace Settings */}
+                    <button
+                      onClick={() => { setShowThreeDotMenu(false); setActiveTab('settings'); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <LayoutGrid size={16} />
+                      Workspace Settings
+                    </button>
+
+                    {/* Mute/Unmute sounds */}
+                    <button
+                      onClick={() => { setSoundEnabled(!soundEnabled); setShowThreeDotMenu(false); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                      {soundEnabled ? 'Mute Soundscape' : 'Unmute Soundscape'}
+                    </button>
+
+                    {/* Logout */}
+                    <button
+                      onClick={() => { logout(); setShowThreeDotMenu(false); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%', marginTop: '4px', borderTop: '1px solid var(--border-glass)' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <LogOut size={16} />
+                      Logout Platform
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -424,6 +688,9 @@ function Sidebar({
               Connection lost. Syncing...
             </div>
           )}
+
+          {/* Ambient Soundscape Player widget */}
+          <AmbientAudioWidget showToast={showToast} />
 
 
 
@@ -484,9 +751,7 @@ function Sidebar({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                          <div className={`initials-avatar ${getAvatarBgClass(u.username)}`} style={{ width: '32px', height: '32px', fontSize: '13px' }}>
-                            {getInitials(u.username)}
-                          </div>
+                          {renderAvatar(u, '32px', '13px')}
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</h4>
                             <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>wants to connect</span>
@@ -531,20 +796,44 @@ function Sidebar({
 
                 {/* Contacts list */}
                 <div style={{ marginBottom: '24px' }}>
-                  <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 12px', letterSpacing: '0.05em' }}>
-                    Contacts ({filteredContacts.length})
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
+                    <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', margin: 0 }}>
+                      {showArchivedOnly ? 'Archived Chats' : 'Contacts'} ({sortedContacts.length})
+                    </h3>
+                    <button
+                      onClick={() => setShowArchivedOnly(!showArchivedOnly)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: showArchivedOnly ? 'var(--primary)' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 600
+                      }}
+                      title={showArchivedOnly ? "Show Active Chats" : "Show Archived Chats"}
+                    >
+                      <Archive size={12} />
+                      {showArchivedOnly ? "Active" : "Archived"}
+                    </button>
+                  </div>
                   
-                  {filteredContacts.length === 0 ? (
+                  {sortedContacts.length === 0 ? (
                     <div style={{ padding: '12px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
-                      {searchTerm ? 'No contacts match query' : 'No contacts added yet. Search a user to add them!'}
+                      {searchTerm ? 'No contacts match query' : (showArchivedOnly ? 'No archived chats' : 'No contacts added yet. Search a user to add them!')}
                     </div>
                   ) : (
-                    filteredContacts.map(u => {
+                    sortedContacts.map(u => {
                       const isActive = activeChat && activeChat.type === 'direct' && activeChat.id === u.id;
                       const unread = unreadCounts[u.id] || 0;
                       const isTyping = (typingUsers[u.id] || []).length > 0;
                       const isBlocked = user.blockedUsers?.includes(u.id);
+                      const isPinned = user.pinnedChats?.includes(u.id);
+                      const isMuted = user.mutedChats?.includes(u.id);
+                      const isArchived = user.archivedChats?.includes(u.id);
+                      const isHovered = hoveredId === u.id;
 
                       // Last seen settings bypass check
                       const showLastSeen = u.lastSeenSetting !== 'nobody';
@@ -553,6 +842,8 @@ function Sidebar({
                         <div
                           key={u.id}
                           onClick={() => setActiveChat({ id: u.id, name: u.username, type: 'direct' })}
+                          onMouseEnter={() => setHoveredId(u.id)}
+                          onMouseLeave={() => setHoveredId(null)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -569,27 +860,33 @@ function Sidebar({
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
                             <div style={{ position: 'relative', flexShrink: 0 }}>
-                              <div className={`initials-avatar ${getAvatarBgClass(u.username)}`} style={{ width: '42px', height: '42px', fontSize: '16px', boxShadow: 'var(--shadow-sm)' }}>
-                                {getInitials(u.username)}
-                              </div>
+                              {renderAvatar(u, '42px', '16px')}
                               {u.onlineVisibility !== 'invisible' && (
                                 <span style={{ position: 'absolute', bottom: 0, right: 0, width: '12px', height: '12px', borderRadius: '50%', backgroundColor: u.status === 'online' ? 'var(--success)' : 'var(--text-muted)', border: '2px solid var(--bg-app)' }} />
                               )}
                             </div>
 
                             <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
                                 <h4 style={{
                                   fontSize: '14px',
                                   fontWeight: unread > 0 ? 700 : 600,
                                   color: 'var(--text-primary)',
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
-                                  textOverflow: 'ellipsis'
+                                  textOverflow: 'ellipsis',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  margin: 0
                                 }}>
-                                  {u.username}
+                                  {u.username} {getFriendEmoji(u.username)}
+                                  {isPinned && <Pin size={11} style={{ color: 'var(--primary)' }} fill="var(--primary)" />}
+                                  {isMuted && <VolumeX size={11} style={{ color: 'var(--text-muted)' }} />}
                                 </h4>
-                                {isBlocked && <ShieldAlert size={12} style={{ color: 'var(--danger)' }} />}
+                                <span style={{ fontSize: '11px', color: '#ff9f43', display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                                  <Flame size={12} fill="#ff9f43" stroke="none" /> {getStreak(u.username)}
+                                </span>
                               </div>
 
                               {isTyping ? (
@@ -602,11 +899,40 @@ function Sidebar({
                             </div>
                           </div>
 
-                          {unread > 0 && (
-                            <span style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', fontSize: '10px', fontWeight: 700, borderRadius: '12px', minWidth: '20px', height: '20px', display: 'flex', alignItems: 'center', justify: 'center', padding: '0 6px' }}>
-                              {unread}
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                            {isHovered ? (
+                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => socket.emit('toggle_chat_status', { targetId: u.id, statusType: 'pin', active: !isPinned })}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isPinned ? 'var(--primary)' : 'var(--text-muted)', display: 'flex' }}
+                                  title={isPinned ? "Unpin Chat" : "Pin Chat"}
+                                >
+                                  <Pin size={13} fill={isPinned ? 'var(--primary)' : 'none'} />
+                                </button>
+                                <button
+                                  onClick={() => socket.emit('toggle_chat_status', { targetId: u.id, statusType: 'mute', active: !isMuted })}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isMuted ? 'var(--danger)' : 'var(--text-muted)', display: 'flex' }}
+                                  title={isMuted ? "Unmute Notifications" : "Mute Notifications"}
+                                >
+                                  {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                                </button>
+                                <button
+                                  onClick={() => socket.emit('toggle_chat_status', { targetId: u.id, statusType: 'archive', active: !isArchived })}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isArchived ? 'var(--primary)' : 'var(--text-muted)', display: 'flex' }}
+                                  title={isArchived ? "Unarchive Chat" : "Archive Chat"}
+                                >
+                                  <Archive size={13} />
+                                </button>
+                              </div>
+                            ) : (
+                              unread > 0 && (
+                                <span style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', fontSize: '10px', fontWeight: 700, borderRadius: '12px', minWidth: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>
+                                  {unread}
+                                </span>
+                              )
+                            )}
+                            {isBlocked && !isHovered && <ShieldAlert size={12} style={{ color: 'var(--danger)' }} />}
+                          </div>
                         </div>
                       );
                     })
@@ -641,9 +967,7 @@ function Sidebar({
                             }}
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                              <div className={`initials-avatar ${getAvatarBgClass(u.username)}`} style={{ width: '36px', height: '36px', fontSize: '14px' }}>
-                                {getInitials(u.username)}
-                              </div>
+                              {renderAvatar(u, '36px', '14px')}
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</h4>
                                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>{u.statusMsg || 'Hey there!'}</span>
@@ -907,10 +1231,261 @@ function Sidebar({
               </div>
             )}
           </div>
-
-
         </div>
       )}
+
+      {/* Edit own profile modal overlay */}
+      {showMyProfileModal && (
+        <MyProfileModal
+          user={user}
+          onClose={() => setShowMyProfileModal(false)}
+          socket={socket}
+          connected={connected}
+          onUserUpdate={onUserUpdate}
+          showToast={showToast}
+        />
+      )}
+
+      {/* Snap Map Modal Overlay */}
+      {showSnapMap && (
+        <SnapMapModal
+          user={user}
+          onlineUsers={onlineUsers}
+          onClose={() => setShowSnapMap(false)}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+function AmbientAudioWidget({ showToast }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedSound, setSelectedSound] = useState('drone'); // drone, chords, rain
+  const audioCtxRef = React.useRef(null);
+  const sourcesRef = React.useRef([]);
+
+  const stopAudio = () => {
+    if (sourcesRef.current) {
+      sourcesRef.current.forEach(source => {
+        try { source.stop(); } catch (e) {}
+      });
+      sourcesRef.current = [];
+    }
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+    setIsPlaying(false);
+  };
+
+  const startAudio = () => {
+    stopAudio();
+    
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    
+    const ctx = new AudioContext();
+    audioCtxRef.current = ctx;
+
+    const sources = [];
+
+    if (selectedSound === 'drone') {
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = 55;
+      osc2.type = 'sine';
+      osc2.frequency.value = 110;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 150;
+
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 0.15;
+      lfoGain.gain.value = 40;
+      
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 2.0);
+
+      osc1.start();
+      osc2.start();
+      lfo.start();
+
+      sources.push(osc1, osc2, lfo);
+    } 
+    else if (selectedSound === 'chords') {
+      const frequencies = [130.81, 196.00, 261.63, 329.63, 493.88];
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 350;
+
+      const mainGain = ctx.createGain();
+      mainGain.connect(ctx.destination);
+      mainGain.gain.setValueAtTime(0, ctx.currentTime);
+      mainGain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 3.0);
+
+      frequencies.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const oscGain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+
+        const oscLfo = ctx.createOscillator();
+        const oscLfoGain = ctx.createGain();
+        oscLfo.frequency.value = 0.05 + idx * 0.02;
+        oscLfoGain.gain.value = 0.25;
+
+        oscLfo.connect(oscLfoGain);
+        oscLfoGain.connect(oscGain.gain);
+
+        oscGain.gain.setValueAtTime(0.3, ctx.currentTime);
+
+        osc.connect(oscGain);
+        oscGain.connect(filter);
+
+        osc.start();
+        oscLfo.start();
+        sources.push(osc, oscLfo);
+      });
+
+      filter.connect(mainGain);
+      sources.push(mainGain);
+    } 
+    else if (selectedSound === 'rain') {
+      const bufferSize = 2 * ctx.sampleRate;
+      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      let lastOut = 0.0;
+      
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        output[i] = (lastOut + (0.02 * white)) / 1.02;
+        lastOut = output[i];
+        output[i] *= 3.5;
+      }
+
+      const noiseNode = ctx.createBufferSource();
+      noiseNode.buffer = noiseBuffer;
+      noiseNode.loop = true;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 350;
+
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 0.08;
+      lfoGain.gain.value = 80;
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
+
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 2.0);
+
+      noiseNode.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      noiseNode.start();
+      lfo.start();
+
+      sources.push(noiseNode, lfo);
+    }
+
+    sourcesRef.current = sources;
+    setIsPlaying(true);
+  };
+
+  const handleTogglePlay = () => {
+    if (isPlaying) {
+      stopAudio();
+      showToast('Ambient Hum Muted', 'info');
+    } else {
+      startAudio();
+      showToast(`Playing ${selectedSound} hum`, 'success');
+    }
+  };
+
+  useEffect(() => {
+    if (isPlaying) {
+      startAudio();
+    }
+  }, [selectedSound]);
+
+  useEffect(() => {
+    return () => {
+      stopAudio();
+    };
+  }, []);
+
+  return (
+    <div className={`ambient-audio-widget ${isPlaying ? 'playing' : ''}`}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Volume2 size={16} style={{ color: isPlaying ? 'var(--primary)' : 'var(--text-muted)' }} />
+          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>Ambient Soundscape</span>
+        </div>
+        <div className="ambient-waves">
+          <span className="ambient-bar" />
+          <span className="ambient-bar" />
+          <span className="ambient-bar" />
+          <span className="ambient-bar" />
+          <span className="ambient-bar" />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <select 
+          value={selectedSound} 
+          onChange={(e) => setSelectedSound(e.target.value)}
+          style={{
+            flex: 1,
+            backgroundColor: 'var(--bg-app)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-glass)',
+            borderRadius: '6px',
+            padding: '4px 8px',
+            fontSize: '11px',
+            outline: 'none',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="drone">Cyberpunk Hum</option>
+          <option value="chords">Space Chords</option>
+          <option value="rain">Binaural Rain</option>
+        </select>
+        <button
+          onClick={handleTogglePlay}
+          style={{
+            backgroundColor: isPlaying ? 'var(--danger)' : 'var(--primary)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '5px 12px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'background-color 0.2s'
+          }}
+        >
+          {isPlaying ? 'Mute' : 'Play'}
+        </button>
+      </div>
     </div>
   );
 }

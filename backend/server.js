@@ -16,11 +16,18 @@ const { router: authRouter } = require('./routes/auth');
 const { router: usersRouter } = require('./routes/users');
 const notificationsRouter = require('./routes/notifications');
 const adminRouter = require('./routes/admin');
+const communitiesRouter = require('./routes/communities');
+const channelsRouter = require('./routes/channels');
+const storiesRouter = require('./routes/stories');
+const aiRouter = require('./routes/ai');
+const premiumRouter = require('./routes/premium');
+const streaksRouter = require('./routes/streaks');
 
 // Models (required early to ensure TTL indexes are created on startup)
 const Message = require('./models/Message');
 const Notification = require('./models/Notification');
 const CallHistory = require('./models/CallHistory');
+const Story = require('./models/Story');
 
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vikasprajapat20004_db_user:7IXmzc3isvDSs2jD@cluster0.kiyfv7l.mongodb.net/cyberchat?appName=Cluster0';
@@ -30,6 +37,9 @@ mongoose.connect(MONGODB_URI)
     // Ensure TTL index on disappearsAt field for auto message deletion
     await Message.collection.createIndex({ disappearsAt: 1 }, { expireAfterSeconds: 0, sparse: true });
     console.log('[CyberChat] TTL index on Message.disappearsAt set.');
+    // Ensure TTL index on Story.expiresAt for 24h auto-deletion
+    await Story.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    console.log('[CyberChat] TTL index on Story.expiresAt set.');
   })
   .catch((err) => console.error('MongoDB connection error:', err));
 
@@ -71,6 +81,12 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/communities', communitiesRouter);
+app.use('/api/channels', channelsRouter);
+app.use('/api/stories', storiesRouter);
+app.use('/api/ai', aiRouter);
+app.use('/api/premium', premiumRouter);
+app.use('/api/streaks', streaksRouter);
 
 // Ensure upload directory exists
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
@@ -252,5 +268,5 @@ registerSocketHandlers(io, memoryState);
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`[CyberChat Server] Running on port ${PORT}`);
+  console.log(`[CyberChar Server] Running on port ${PORT}`);
 });

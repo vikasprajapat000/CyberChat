@@ -62,7 +62,7 @@ export default function UserReportModal({ targetUser, messageId, apiBase, onClos
           <div className="report-success">
             <CheckCircle size={50} className="report-success-icon" />
             <h4>Report Submitted</h4>
-            <p>Thank you for keeping CyberChat safe. Our team will review your report within 24 hours.</p>
+            <p>Thank you for keeping CyberChar safe. Our team will review your report within 24 hours.</p>
           </div>
         ) : (
           <div className="report-body">

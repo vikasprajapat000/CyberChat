@@ -146,7 +146,7 @@ function AdminDashboard({
       // Document Header
       doc.setFontSize(20);
       doc.setTextColor(0, 168, 132); // Cyber Teal Accent
-      doc.text('Cyber Chat (cc) - Conversation Report Archive', 14, 20);
+      doc.text('Cyber Char (cc) - Conversation Report Archive', 14, 20);
       
       doc.setFontSize(11);
       doc.setTextColor(100, 116, 139);
@@ -169,7 +169,7 @@ function AdminDashboard({
         columnStyles: { 3: { cellWidth: 80 } } // Give message column more space
       });
 
-      const filename = `cyberchat_archive_${targetName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+      const filename = `cyberchar_archive_${targetName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.pdf`;
 
       if (action === 'download') {
         doc.save(filename);

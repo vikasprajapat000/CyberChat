@@ -4,7 +4,8 @@ import {
   Paperclip, Smile, Send, Search, Pin, CornerUpLeft, Edit2, Trash2, 
   Copy, X, Image as ImageIcon, FileText, ArrowLeft, Star, Forward,
   ChevronDown, AlertTriangle, Info, Eye, ShieldAlert, Phone, Video,
-  Mic, MicOff, BarChart2, CheckSquare, ExternalLink, HelpCircle, Sticker
+  Mic, MicOff, BarChart2, CheckSquare, ExternalLink, HelpCircle, Sticker,
+  Lock, Clock, MapPin, Languages
 } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import ForwardModal from './ForwardModal';
@@ -12,7 +13,7 @@ import PollCreator from './PollCreator';
 import confetti from 'canvas-confetti';
 import { SOCKET_EVENTS } from '../../../shared/constants.json';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://cyberchat-tiy0.onrender.com';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
 
 // Pre-seeded local developer sticker pack
 const DEVELOPER_STICKERS = [
@@ -39,7 +40,11 @@ function ChatArea({
   theme,
   showToast,
   rooms,
-  onStartCall // Trigger call callback
+  onStartCall,
+  isSelectionMode,
+  setIsSelectionMode,
+  selectedMessageIds,
+  setSelectedMessageIds
 }) {
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +86,18 @@ function ChatArea({
     const saved = localStorage.getItem('cc_deleted_for_me');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Disappearing & View Once states
+  const [disappearingTimer, setDisappearingTimer] = useState(0);
+  const [viewOnceEnabled, setViewOnceEnabled] = useState(false);
+  const [activeViewOnceMsg, setActiveViewOnceMsg] = useState(null);
+
+  // Advanced checklist states
+  const [vanishModeEnabled, setVanishModeEnabled] = useState(false);
+  const [scheduledDelay, setScheduledDelay] = useState(null); // delay in milliseconds
+  const [showScheduleDropdown, setShowScheduleDropdown] = useState(false);
+  const [translatedMessages, setTranslatedMessages] = useState({});
+  const [inputFocused, setInputFocused] = useState(false);
 
   const chatEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -527,13 +544,61 @@ function ChatArea({
 
     if (!inputText.trim() && !fileUrl) return;
 
+    // Vanish Mode (Secret Chat) intercept
+    if (vanishModeEnabled && activeChat.type === 'direct') {
+      socket.emit('secret_message', {
+        recipientId: activeChat.id,
+        text: inputText.trim(),
+        mediaUrl: fileUrl,
+        mediaType: fileType
+      });
+
+      setInputText('');
+      setReplyingTo(null);
+      setSelectedFile(null);
+      setFilePreview(null);
+      setViewOnceEnabled(false);
+      return;
+    }
+
+    // Scheduled Message intercept
+    if (scheduledDelay !== null) {
+      socket.emit('schedule_message', {
+        delayMs: scheduledDelay,
+        messageData: {
+          senderId: user.id,
+          recipientId: activeChat.type === 'direct' ? activeChat.id : null,
+          roomId: activeChat.type === 'group' ? activeChat.id : null,
+          text: inputText.trim(),
+          mediaUrl: fileUrl,
+          mediaType: fileType,
+          mediaName: fileName,
+          replyToId: replyingTo ? replyingTo.id : null
+        }
+      });
+
+      setInputText('');
+      setReplyingTo(null);
+      setSelectedFile(null);
+      setFilePreview(null);
+      setViewOnceEnabled(false);
+      setScheduledDelay(null);
+      showToast('Scheduled message queued successfully!', 'success');
+      return;
+    }
+
     const payload = {
       senderId: user.id,
       recipientId: activeChat.type === 'direct' ? activeChat.id : null,
       roomId: activeChat.type === 'group' ? activeChat.id : null,
       text: inputText.trim(),
-      replyToId: replyingTo ? replyingTo.id : null
+      replyToId: replyingTo ? replyingTo.id : null,
+      viewOnce: viewOnceEnabled
     };
+
+    if (disappearingTimer > 0) {
+      payload.disappearsAt = new Date(Date.now() + disappearingTimer * 1000).toISOString();
+    }
 
     if (fileUrl) {
       payload.mediaUrl = fileUrl;
@@ -550,6 +615,15 @@ function ChatArea({
     setReplyingTo(null);
     setSelectedFile(null);
     setFilePreview(null);
+    setViewOnceEnabled(false); // Reset view-once toggle after send
+  };
+
+  const handleCloseViewOnce = () => {
+    if (!activeViewOnceMsg || !socket) return;
+    socket.emit('view_once_message_seen', { messageId: activeViewOnceMsg.id });
+    setActiveViewOnceMsg(null);
+    showToast('Secure container self-destructed!', 'warning');
+    confetti({ particleCount: 40, colors: ['#ff4444', '#ffaa00'] });
   };
 
   const handleInputChange = (e) => {
@@ -591,6 +665,25 @@ function ChatArea({
     }
   };
 
+  const handleTranslateClick = (msg) => {
+    if (!msg.text) return;
+    const mockTranslations = [
+      "Hola, ¿cómo estás? (Spanish 🇪🇸)",
+      "Bonjour, comment ça va? (French 🇫🇷)",
+      "こんにちは、元気ですか？ (Japanese 🇯🇵)",
+      "नमस्ते, आप कैसे हैं? (Hindi 🇮🇳)"
+    ];
+    let hash = 0;
+    for (let i = 0; i < msg.id.length; i++) hash += msg.id.charCodeAt(i);
+    const translatedText = mockTranslations[hash % mockTranslations.length];
+    
+    setTranslatedMessages(prev => ({
+      ...prev,
+      [msg.id]: translatedText
+    }));
+    showToast('Message translated successfully!', 'success');
+  };
+
   const handleAction = (action, msg) => {
     setActiveMenuId(null);
     if (action === 'reply') {
@@ -616,6 +709,9 @@ function ChatArea({
       const newDeleted = [...deletedForMeIds, msg.id];
       setDeletedForMeIds(newDeleted);
       localStorage.setItem('cc_deleted_for_me', JSON.stringify(newDeleted));
+    }
+    else if (action === 'translate') {
+      handleTranslateClick(msg);
     }
   };
 
@@ -670,9 +766,19 @@ function ChatArea({
               onClick={() => activeChat.type === 'direct' && onInspectUser(activeChat.id)}
               style={{ cursor: activeChat.type === 'direct' ? 'pointer' : 'default', position: 'relative' }}
             >
-              <div className={`initials-avatar ${getAvatarBgClass(activeChat.name)}`} style={{ width: '40px', height: '40px', fontSize: '15px' }}>
-                {activeChat.type === 'group' ? '#' : getInitials(activeChat.name)}
-              </div>
+              {activeChat.type === 'direct' && onlineUsers.find(u => u.id === activeChat.id)?.profilePhoto ? (
+                <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1.5px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <img 
+                    src={`${BACKEND_URL}${onlineUsers.find(u => u.id === activeChat.id).profilePhoto}`} 
+                    alt={activeChat.name} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                </div>
+              ) : (
+                <div className={`initials-avatar ${getAvatarBgClass(activeChat.name)}`} style={{ width: '40px', height: '40px', fontSize: '15px' }}>
+                  {activeChat.type === 'group' ? '#' : getInitials(activeChat.name)}
+                </div>
+              )}
               <span className={`ping-pulse ping-${latencyQuality}`} style={{ position: 'absolute', top: '-2px', right: '-2px', border: '2px solid var(--bg-panel)' }} />
             </div>
 
@@ -855,18 +961,58 @@ function ChatArea({
                     </div>
                   )}
 
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: isSelf ? 'flex-end' : 'flex-start',
-                    marginBottom: '8px',
-                    position: 'relative'
-                  }}>
+                  <div 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: isSelf ? 'flex-end' : 'flex-start',
+                      marginBottom: '8px',
+                      position: 'relative',
+                      cursor: isSelectionMode ? 'pointer' : 'default'
+                    }}
+                    onClick={() => {
+                      if (isSelectionMode && !msg.deleted) {
+                        if (selectedMessageIds.includes(msg.id)) {
+                          setSelectedMessageIds(selectedMessageIds.filter(id => id !== msg.id));
+                        } else {
+                          setSelectedMessageIds([...selectedMessageIds, msg.id]);
+                        }
+                      }
+                    }}
+                  >
+                    {isSelectionMode && !msg.deleted && (
+                      <input
+                        type="checkbox"
+                        checked={selectedMessageIds.includes(msg.id)}
+                        onChange={() => {}} // toggled by parent click handler
+                        style={{
+                          marginRight: isSelf ? '12px' : '0',
+                          marginLeft: isSelf ? '0' : '12px',
+                          order: isSelf ? -1 : 10,
+                          cursor: 'pointer',
+                          width: '18px',
+                          height: '18px',
+                          accentColor: 'var(--primary)',
+                          flexShrink: 0
+                        }}
+                      />
+                    )}
                     
                     {!isSelf && activeChat.type === 'group' && (
                       <div onClick={() => onInspectUser(msg.senderId)} style={{ marginRight: '8px', marginTop: '4px', cursor: 'pointer' }}>
-                        <div className={`initials-avatar ${getAvatarBgClass(senderName)}`} style={{ width: '28px', height: '28px', fontSize: '11px' }}>
-                          {getInitials(senderName)}
-                        </div>
+                        {onlineUsers.find(u => u.id === msg.senderId)?.profilePhoto ? (
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', overflow: 'hidden', border: '1.5px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img 
+                              src={`${BACKEND_URL}${onlineUsers.find(u => u.id === msg.senderId).profilePhoto}`} 
+                              alt={senderName} 
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                            />
+                          </div>
+                        ) : (
+                          <div className={`initials-avatar ${getAvatarBgClass(senderName)}`} style={{ width: '28px', height: '28px', fontSize: '11px' }}>
+                            {getInitials(senderName)}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -879,7 +1025,7 @@ function ChatArea({
                         flexDirection: 'column',
                         alignItems: isSelf ? 'flex-end' : 'flex-start'
                       }}
-                      onMouseEnter={() => !msg.deleted && setActiveMenuId(msg.id)}
+                      onMouseEnter={() => !msg.deleted && !isSelectionMode && setActiveMenuId(msg.id)}
                       onMouseLeave={() => setActiveMenuId(null)}
                     >
                       {/* Emoji reaction toolbar on hover */}
@@ -969,38 +1115,115 @@ function ChatArea({
                           </div>
                         )}
 
-                        {/* Media sharing block (Images, audio voice record, download links) */}
-                        {msg.mediaUrl && (
-                          <div style={{ marginBottom: '6px', borderRadius: '8px', overflow: 'hidden' }}>
-                            {msg.mediaType === 'image' && (
-                              <a href={getMediaSrc(msg.mediaUrl)} target="_blank" rel="noreferrer">
-                                <img src={getMediaSrc(msg.mediaUrl)} alt="Shared Image" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'cover', display: 'block', borderRadius: '4px' }} />
-                              </a>
-                            )}
-                            
-                            {/* Voice playback waveform chimes */}
-                            {msg.mediaType === 'audio' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <audio src={getMediaSrc(msg.mediaUrl)} controls style={{ maxHeight: '40px', outline: 'none' }} />
+                        {/* View Once Ephemeral Container or Standard message blocks */}
+                        {msg.viewOnce ? (
+                          msg.deleted ? (
+                            <div className="view-once-card opened">
+                              <span style={{ fontSize: '13px', fontStyle: 'italic' }}>🗑️ Ephemeral Message Opened and Self-Destructed</span>
+                            </div>
+                          ) : (
+                            <div className="view-once-card" onClick={() => setActiveViewOnceMsg(msg)}>
+                              <Eye size={18} style={{ color: 'var(--warning)' }} />
+                              <span style={{ fontSize: '13px', fontWeight: 600 }}>🔒 View-Once Secure Container</span>
+                              <span style={{ fontSize: '11px', opacity: 0.8 }}>Click to decrypt & open</span>
+                            </div>
+                          )
+                        ) : (
+                          <>
+                            {/* Media sharing block (Images, audio voice record, download links) */}
+                            {msg.mediaUrl && (
+                              <div style={{ marginBottom: '6px', borderRadius: '8px', overflow: 'hidden' }}>
+                                {msg.mediaType === 'image' && (
+                                  <a href={getMediaSrc(msg.mediaUrl)} target="_blank" rel="noreferrer">
+                                    <img src={getMediaSrc(msg.mediaUrl)} alt="Shared Image" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'cover', display: 'block', borderRadius: '4px' }} />
+                                  </a>
+                                )}
+                                
+                                {/* Voice playback waveform chimes */}
+                                {msg.mediaType === 'audio' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <audio src={getMediaSrc(msg.mediaUrl)} controls style={{ maxHeight: '40px', outline: 'none' }} />
+                                  </div>
+                                )}
+
+                                {/* Location sharing card rendering */}
+                                {msg.mediaType === 'location' && (
+                                  <div style={{
+                                    padding: '12px',
+                                    backgroundColor: 'rgba(108, 92, 231, 0.1)',
+                                    border: '1.5px solid #6c5ce7',
+                                    borderRadius: '8px',
+                                    minWidth: '220px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontWeight: 700, fontSize: '13px' }}>
+                                      <MapPin size={16} className="animate-bounce" />
+                                      <span>LIVE LOCATION COORDINATES</span>
+                                    </div>
+                                    <div style={{
+                                      height: '85px',
+                                      backgroundColor: '#0f172a',
+                                      border: '1px solid rgba(255,255,255,0.08)',
+                                      borderRadius: '6px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      position: 'relative',
+                                      overflow: 'hidden'
+                                    }}>
+                                      <div style={{
+                                        position: 'absolute',
+                                        width: '100%',
+                                        height: '100%',
+                                        backgroundImage: 'radial-gradient(rgba(108, 92, 231, 0.3) 1px, transparent 0)',
+                                        backgroundSize: '10px 10px',
+                                        opacity: 0.5
+                                      }} />
+                                      <span style={{ fontSize: '12px', color: '#fff', fontFamily: 'monospace', zIndex: 1 }}>Lat: 40.7128</span>
+                                      <span style={{ fontSize: '12px', color: '#fff', fontFamily: 'monospace', zIndex: 1 }}>Lng: -74.0060</span>
+                                    </div>
+                                    <a
+                                      href="https://maps.google.com/?q=40.7128,-74.0060"
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        backgroundColor: '#6c5ce7',
+                                        color: '#fff',
+                                        textAlign: 'center',
+                                        padding: '6px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        textDecoration: 'none',
+                                        display: 'block'
+                                      }}
+                                    >
+                                      View on Google Maps
+                                    </a>
+                                  </div>
+                                )}
+
+                                {msg.mediaType !== 'image' && msg.mediaType !== 'audio' && msg.mediaType !== 'location' && (
+                                  <a 
+                                    href={getMediaSrc(msg.mediaUrl)} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    download
+                                    style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: '6px', textDecoration: 'none', color: 'inherit', fontSize: '13px' }}
+                                  >
+                                    <FileText size={24} style={{ color: 'var(--primary)' }} />
+                                    <div style={{ minWidth: 0 }}>
+                                      <span style={{ fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{msg.mediaName}</span>
+                                      <span style={{ fontSize: '10px', opacity: 0.7 }}>Attachment File</span>
+                                    </div>
+                                  </a>
+                                )}
                               </div>
                             )}
-
-                            {msg.mediaType !== 'image' && msg.mediaType !== 'audio' && (
-                              <a 
-                                href={getMediaSrc(msg.mediaUrl)} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                download
-                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: '6px', textDecoration: 'none', color: 'inherit', fontSize: '13px' }}
-                              >
-                                <FileText size={24} style={{ color: 'var(--primary)' }} />
-                                <div style={{ minWidth: 0 }}>
-                                  <span style={{ fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{msg.mediaName}</span>
-                                  <span style={{ fontSize: '10px', opacity: 0.7 }}>Attachment File</span>
-                                </div>
-                              </a>
-                            )}
-                          </div>
+                          </>
                         )}
 
                         {/* Interactive Poll Cards Rendering */}
@@ -1083,28 +1306,49 @@ function ChatArea({
                         )}
 
                         {/* Standard text body message */}
-                        {msg.mediaType !== 'sticker' && (
-                          <p style={{
-                            fontSize: '14px',
-                            lineHeight: '1.4',
-                            wordBreak: 'break-word',
-                            fontStyle: msg.deleted ? 'italic' : 'normal',
-                            opacity: msg.deleted ? 0.6 : 1,
-                            paddingRight: '32px',
-                            whiteSpace: 'pre-wrap'
-                          }}>
-                            {msg.text}
-                          </p>
+                        {!msg.viewOnce && msg.mediaType !== 'sticker' && (
+                          <div style={{ paddingRight: '32px' }}>
+                            {translatedMessages[msg.id] && (
+                              <div style={{
+                                backgroundColor: 'rgba(0, 168, 132, 0.08)',
+                                borderLeft: '2.5px solid var(--primary)',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                marginBottom: '6px',
+                                fontSize: '11px',
+                                color: 'var(--primary)',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <Languages size={10} />
+                                <span>Translation: {translatedMessages[msg.id]}</span>
+                              </div>
+                            )}
+                            <p style={{
+                              fontSize: '14px',
+                              lineHeight: '1.4',
+                              wordBreak: 'break-word',
+                              fontStyle: msg.deleted ? 'italic' : 'normal',
+                              opacity: msg.deleted ? 0.6 : 1,
+                              whiteSpace: 'pre-wrap',
+                              margin: 0
+                            }}>
+                              {msg.text}
+                            </p>
+                          </div>
                         )}
 
-                        <div style={{ display: 'flex', alignItems: 'center', justify: 'flex-end', gap: '2px', fontSize: '10px', opacity: 0.6, marginTop: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justify: 'flex-end', gap: '6px', fontSize: '10px', opacity: 0.6, marginTop: '4px' }}>
+                          {msg.disappearsAt && <DisappearingCountdown disappearsAt={msg.disappearsAt} />}
                           {msg.edited && !msg.deleted && <span>(edited)</span>}
                           <span>{formatTime(msg.timestamp)}</span>
                           {renderMessageTicks(msg)}
                         </div>
 
                         {/* Option actions menu */}
-                        {activeMenuId === msg.id && (
+                        {activeMenuId === msg.id && !isSelectionMode && (
                           <div style={{ position: 'absolute', bottom: '4px', right: '4px', zIndex: 20 }}>
                             <button
                               onClick={(e) => {
@@ -1137,6 +1381,9 @@ function ChatArea({
                               <button onClick={() => setForwardingMessage(msg)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '12px' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Forward size={12} /> Forward</button>
                               {msg.text && msg.mediaType !== 'sticker' && (
                                 <button onClick={() => handleAction('copy', msg)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '12px' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Copy size={12} /> Copy</button>
+                              )}
+                              {msg.text && msg.mediaType !== 'sticker' && !msg.deleted && (
+                                <button onClick={() => handleAction('translate', msg)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '12px' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Languages size={12} /> Translate</button>
                               )}
                               <button onClick={() => handleStarToggle(msg.id)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '12px' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Star size={12} /> {isStarred ? 'Unstar' : 'Star'}</button>
                               <button onClick={() => handleAction('pin', msg)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '12px' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Pin size={12} /> {msg.pinned ? 'Unpin' : 'Pin'}</button>
@@ -1179,18 +1426,142 @@ function ChatArea({
           <div ref={chatEndRef} />
         </div>
 
-        {/* Message Compose Panel */}
-        <div style={{
-          padding: isMobile ? '10px 12px' : '12px 24px',
-          borderTop: '1px solid var(--border-glass)',
-          backgroundColor: 'var(--bg-panel)',
-          position: 'relative',
-          flexShrink: 0
-        }}>
+        {/* Selection Bar or Message Compose Panel */}
+        {isSelectionMode ? (
+          <div style={{
+            padding: '16px 24px',
+            borderTop: '1px solid var(--border-glass)',
+            backgroundColor: 'var(--bg-panel)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            animation: 'slideUp 0.3s ease-out'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{
+                backgroundColor: 'var(--primary)',
+                color: '#fff',
+                fontSize: '12px',
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: '20px'
+              }}>
+                {selectedMessageIds.length} Selected
+              </span>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Select messages you wish to delete from database.
+              </span>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  setIsSelectionMode(false);
+                  setSelectedMessageIds([]);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1.5px solid var(--border-glass)',
+                  background: 'none',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={selectedMessageIds.length === 0}
+                onClick={() => {
+                  if (selectedMessageIds.length > 0) {
+                    const confirmDelete = window.confirm(`Are you sure you want to delete these ${selectedMessageIds.length} messages?`);
+                    if (confirmDelete) {
+                      socket.emit('delete_messages_bulk', {
+                        messageIds: selectedMessageIds,
+                        senderId: user.id
+                      });
+                      setIsSelectionMode(false);
+                      setSelectedMessageIds([]);
+                    }
+                  }
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: selectedMessageIds.length === 0 ? 'rgba(239, 68, 68, 0.4)' : 'var(--danger)',
+                  color: '#fff',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: selectedMessageIds.length === 0 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                Delete Selected
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            padding: isMobile ? '10px 12px' : '12px 24px',
+            borderTop: '1px solid var(--border-glass)',
+            backgroundColor: 'var(--bg-panel)',
+            position: 'relative',
+            flexShrink: 0
+          }}>
+
+          {/* Smart replies picker panel */}
+          {inputFocused && !inputText.trim() && (
+            <div style={{ display: 'flex', gap: '8px', padding: '6px 12px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-glass)', borderRadius: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              {['Sounds good! 👍', 'Sure, let\'s do it', 'Let\'s sync up later.'].map((reply, i) => (
+                <button
+                  key={i}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // prevent blur before click fires
+                    setInputText(reply);
+                    showToast('AI quick reply selected!', 'info');
+                  }}
+                  style={{
+                    backgroundColor: 'rgba(0, 168, 132, 0.1)',
+                    border: '1.5px solid var(--primary)',
+                    color: 'var(--text-primary)',
+                    borderRadius: '16px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {reply}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Scheduled & Vanish indicators */}
+          {(scheduledDelay !== null || vanishModeEnabled) && (
+            <div style={{ display: 'flex', gap: '10px', padding: '6px 12px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-glass)', borderRadius: '8px', marginBottom: '8px', alignItems: 'center' }}>
+              {vanishModeEnabled && (
+                <span style={{ fontSize: '11px', color: '#a855f7', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Lock size={12} /> Vanish Mode (Secret Chat Active)
+                </span>
+              )}
+              {scheduledDelay !== null && (
+                <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={12} /> Scheduled Message: {scheduledDelay / 1000}s Delay
+                </span>
+              )}
+            </div>
+          )}
           
           {/* Reply Preview */}
           {replyingTo && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderLeft: '4px solid var(--primary)', borderRadius: '6px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderLeft: '4px solid var(--primary)', borderRadius: '6px', marginBottom: '10px' }}>
               <div style={{ fontSize: '12px', minWidth: 0 }}>
                 <span style={{ fontWeight: 700, display: 'block', color: 'var(--primary)' }}>
                   Replying to {replyingTo.senderId === user.id ? 'yourself' : (onlineUsers.find(u => u.id === replyingTo.senderId)?.username || 'User')}
@@ -1207,7 +1578,7 @@ function ChatArea({
 
           {/* Editing Preview */}
           {editingMessage && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--primary-light)', borderLeft: '4px solid var(--primary)', borderRadius: '6px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', padding: '8px 12px', backgroundColor: 'var(--primary-light)', borderLeft: '4px solid var(--primary)', borderRadius: '6px', marginBottom: '10px' }}>
               <div style={{ fontSize: '12px', minWidth: 0 }}>
                 <span style={{ fontWeight: 700, display: 'block', color: 'var(--primary)' }}>Editing Message</span>
                 <span style={{ color: 'var(--text-secondary)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1344,6 +1715,192 @@ function ChatArea({
               </button>
             )}
 
+            {/* Live Location sharing */}
+            <button
+              type="button"
+              onClick={() => {
+                const confirmShare = window.confirm("Do you want to share your simulated live location coordinates?");
+                if (confirmShare) {
+                  socket.emit('send_message', {
+                    senderId: user.id,
+                    recipientId: activeChat.type === 'direct' ? activeChat.id : null,
+                    roomId: activeChat.type === 'group' ? activeChat.id : null,
+                    text: '📍 Shared simulated live location',
+                    mediaUrl: JSON.stringify({ lat: 40.7128, lng: -74.0060 }),
+                    mediaType: 'location'
+                  });
+                  showToast('Simulated location shared!', 'success');
+                }
+              }}
+              disabled={isRecording}
+              data-tooltip="Share Coordinates Map"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)' }}
+            >
+              <MapPin size={18} />
+            </button>
+
+            {/* Disappearing timer selector */}
+            <select
+              value={disappearingTimer}
+              onChange={(e) => setDisappearingTimer(Number(e.target.value))}
+              disabled={isRecording}
+              title="Disappearing Message Timer"
+              style={{
+                backgroundColor: 'var(--bg-app)',
+                color: disappearingTimer > 0 ? 'var(--warning)' : 'var(--text-secondary)',
+                border: disappearingTimer > 0 ? '1px solid var(--warning)' : '1px solid var(--border-glass)',
+                borderRadius: '8px',
+                padding: '6px',
+                fontSize: '12px',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value={0}>⏱️ Off</option>
+              <option value={10}>⏱️ 10s</option>
+              <option value={60}>⏱️ 1m</option>
+              <option value={3600}>⏱️ 1h</option>
+              <option value={86400}>⏱️ 1d</option>
+            </select>
+
+            {/* View-once ephemeral toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                setViewOnceEnabled(!viewOnceEnabled);
+                if (!viewOnceEnabled) {
+                  showToast('View-Once Mode Enabled (Next message will self-destruct after reading)', 'warning');
+                }
+              }}
+              disabled={isRecording}
+              data-tooltip="View-Once Ephemeral Message"
+              style={{
+                background: 'none',
+                cursor: 'pointer',
+                color: viewOnceEnabled ? 'var(--warning)' : 'var(--text-secondary)',
+                padding: '8px',
+                borderRadius: '50%',
+                backgroundColor: viewOnceEnabled ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-app)',
+                border: viewOnceEnabled ? '1px solid var(--warning)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Eye size={18} />
+            </button>
+
+            {/* Vanish Mode (Secret Chat) toggle */}
+            {activeChat.type === 'direct' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVanishModeEnabled(!vanishModeEnabled);
+                  if (!vanishModeEnabled) {
+                    showToast('Vanish Mode Enabled (Bypasses DB, 15s auto-clear)', 'purple');
+                  } else {
+                    showToast('Vanish Mode Disabled', 'info');
+                  }
+                }}
+                disabled={isRecording}
+                data-tooltip="Vanish Mode (Secret Chat)"
+                style={{
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: vanishModeEnabled ? '#a855f7' : 'var(--text-secondary)',
+                  padding: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: vanishModeEnabled ? 'rgba(168, 85, 247, 0.15)' : 'var(--bg-app)',
+                  border: vanishModeEnabled ? '1.5px solid #a855f7' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Lock size={18} />
+              </button>
+            )}
+
+            {/* Scheduled messages picker */}
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowScheduleDropdown(!showScheduleDropdown)}
+                disabled={isRecording}
+                data-tooltip="Schedule Message Delivery"
+                style={{
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: scheduledDelay !== null ? 'var(--primary)' : 'var(--text-secondary)',
+                  padding: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: scheduledDelay !== null ? 'var(--primary-light)' : 'var(--bg-app)',
+                  border: scheduledDelay !== null ? '1px solid var(--primary)' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Clock size={18} />
+              </button>
+
+              {showScheduleDropdown && (
+                <>
+                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowScheduleDropdown(false)} />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '44px',
+                    left: 0,
+                    backgroundColor: 'var(--bg-panel)',
+                    border: '1px solid var(--border-glass)',
+                    borderRadius: '8px',
+                    boxShadow: 'var(--shadow-md)',
+                    zIndex: 100,
+                    width: '150px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '6px'
+                  }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, padding: '4px 8px', textTransform: 'uppercase' }}>Select Delay</span>
+                    <button
+                      onClick={() => { setScheduledDelay(10000); setShowScheduleDropdown(false); showToast('Queued with 10s delay', 'info'); }}
+                      style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      ⏱️ 10 Seconds
+                    </button>
+                    <button
+                      onClick={() => { setScheduledDelay(30000); setShowScheduleDropdown(false); showToast('Queued with 30s delay', 'info'); }}
+                      style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      ⏱️ 30 Seconds
+                    </button>
+                    <button
+                      onClick={() => { setScheduledDelay(60000); setShowScheduleDropdown(false); showToast('Queued with 1m delay', 'info'); }}
+                      style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      ⏱️ 1 Minute
+                    </button>
+                    {scheduledDelay !== null && (
+                      <button
+                        onClick={() => { setScheduledDelay(null); setShowScheduleDropdown(false); showToast('Scheduling disabled', 'info'); }}
+                        style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px', borderTop: '1px solid var(--border-glass)' }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        ❌ Cancel Delay
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
             {/* HTML5 Voice Messages Recorder Toggle Mic */}
             {isRecording ? (
               <div 
@@ -1384,6 +1941,8 @@ function ChatArea({
                 value={inputText}
                 onChange={handleInputChange}
                 onKeyDown={handleInputKeyDown}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setTimeout(() => setInputFocused(false), 200)}
                 disabled={!connected || uploading}
                 style={{
                   flex: 1,
@@ -1446,6 +2005,7 @@ function ChatArea({
             )}
           </div>
         </div>
+      )}
       </div>
 
       {/* B. Productivity Shared Links sidebar panel (Extracts url cards) */}
@@ -1519,7 +2079,105 @@ function ChatArea({
           onSubmit={handleLaunchPoll}
         />
       )}
+
+      {/* Ephemeral Secure Viewport Modal */}
+      {activeViewOnceMsg && (
+        <div className="secure-viewport-overlay">
+          <div className="secure-viewport-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
+              <h3 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Eye size={18} style={{ color: 'var(--warning)' }} /> SECURE CONTAINER VIEWPORT
+              </h3>
+              <button 
+                onClick={handleCloseViewOnce}
+                style={{
+                  backgroundColor: 'var(--danger)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Close & Self-Destruct
+              </button>
+            </div>
+
+            <div className="secure-warning-bar">
+              <AlertTriangle size={16} />
+              <span>WARNING: Closing this window will permanently delete this item. Screenshots are logged.</span>
+            </div>
+
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '20px 0', minHeight: '180px' }}>
+              {activeViewOnceMsg.mediaUrl ? (
+                activeViewOnceMsg.mediaType === 'image' ? (
+                  <img 
+                    src={getMediaSrc(activeViewOnceMsg.mediaUrl)} 
+                    alt="Secure container" 
+                    className="secure-viewport-media" 
+                  />
+                ) : activeViewOnceMsg.mediaType === 'audio' ? (
+                  <audio src={getMediaSrc(activeViewOnceMsg.mediaUrl)} controls autoPlay />
+                ) : (
+                  <div style={{ padding: '20px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', textAlign: 'center', color: '#fff' }}>
+                    📂 Ephemeral Attachment Document:<br/>
+                    <a 
+                      href={getMediaSrc(activeViewOnceMsg.mediaUrl)} 
+                      download={activeViewOnceMsg.mediaName}
+                      style={{ color: 'var(--primary)', fontWeight: 'bold', display: 'inline-block', marginTop: '12px' }}
+                    >
+                      Download {activeViewOnceMsg.mediaName}
+                    </a>
+                  </div>
+                )
+              ) : (
+                <p style={{ color: '#fff', fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: 'center', maxWidth: '100%' }}>
+                  {activeViewOnceMsg.text}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function DisappearingCountdown({ disappearsAt }) {
+  const [timeLeft, setTimeLeft] = useState(() => {
+    return Math.max(0, Math.floor((new Date(disappearsAt).getTime() - Date.now()) / 1000));
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        const next = Math.max(0, Math.floor((new Date(disappearsAt).getTime() - Date.now()) / 1000));
+        if (next <= 0) {
+          clearInterval(timer);
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [disappearsAt]);
+
+  if (timeLeft <= 0) return null;
+
+  const formatSecs = (secs) => {
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    return `${hours}h`;
+  };
+
+  return (
+    <span className="disappearing-timer" title="Expiring secure chat message">
+      ⏱️ {formatSecs(timeLeft)}
+    </span>
   );
 }
 

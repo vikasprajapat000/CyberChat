@@ -148,12 +148,29 @@ module.exports = function registerSocketHandlers(io, state) {
           isMutedGlobally: u.isMutedGlobally,
           bio: u.bio,
           statusMsg: u.statusMsg,
+          profilePhoto: u.profilePhoto,
+          coverPhoto: u.coverPhoto,
           customThemeColor: u.customThemeColor,
           lastSeenSetting: u.lastSeenSetting,
           onlineVisibility: u.onlineVisibility,
           contacts: u.contacts || [],
           sentRequests: u.sentRequests || [],
-          receivedRequests: u.receivedRequests || []
+          receivedRequests: u.receivedRequests || [],
+          displayName: u.displayName,
+          mobileNumber: u.mobileNumber,
+          aboutVisibility: u.aboutVisibility,
+          statusVisibility: u.statusVisibility,
+          readReceipts: u.readReceipts,
+          hideTyping: u.hideTyping,
+          hideRecording: u.hideRecording,
+          hideScreenshot: u.hideScreenshot,
+          isGhostMode: u.isGhostMode,
+          isVerified: u.isVerified,
+          chatWallpaper: u.chatWallpaper,
+          fontSize: u.fontSize,
+          pinnedChats: u.pinnedChats || [],
+          mutedChats: u.mutedChats || [],
+          archivedChats: u.archivedChats || []
         };
       });
       io.emit(SOCKET_EVENTS.USER_LIST_UPDATE, userList);
@@ -290,12 +307,29 @@ module.exports = function registerSocketHandlers(io, state) {
             isMutedGlobally: currentUser.role === 'user' ? profile.isMutedGlobally : false,
             bio: currentUser.role === 'user' ? profile.bio : 'Server Administrator',
             statusMsg: currentUser.role === 'user' ? profile.statusMsg : 'Active',
+            profilePhoto: currentUser.role === 'user' ? profile.profilePhoto : null,
+            coverPhoto: currentUser.role === 'user' ? profile.coverPhoto : null,
             customThemeColor: currentUser.role === 'user' ? profile.customThemeColor : '#00a884',
             lastSeenSetting: currentUser.role === 'user' ? profile.lastSeenSetting : 'everyone',
             onlineVisibility: currentUser.role === 'user' ? profile.onlineVisibility : 'visible',
             contacts: currentUser.role === 'user' ? (profile.contacts || []) : [],
             sentRequests: currentUser.role === 'user' ? (profile.sentRequests || []) : [],
-            receivedRequests: currentUser.role === 'user' ? (profile.receivedRequests || []) : []
+            receivedRequests: currentUser.role === 'user' ? (profile.receivedRequests || []) : [],
+            displayName: currentUser.role === 'user' ? profile.displayName : '',
+            mobileNumber: currentUser.role === 'user' ? profile.mobileNumber : '',
+            aboutVisibility: currentUser.role === 'user' ? profile.aboutVisibility : 'everyone',
+            statusVisibility: currentUser.role === 'user' ? profile.statusVisibility : 'everyone',
+            readReceipts: currentUser.role === 'user' ? profile.readReceipts : true,
+            hideTyping: currentUser.role === 'user' ? profile.hideTyping : false,
+            hideRecording: currentUser.role === 'user' ? profile.hideRecording : false,
+            hideScreenshot: currentUser.role === 'user' ? profile.hideScreenshot : false,
+            isGhostMode: currentUser.role === 'user' ? profile.isGhostMode : false,
+            isVerified: currentUser.role === 'user' ? profile.isVerified : false,
+            chatWallpaper: currentUser.role === 'user' ? profile.chatWallpaper : 'default',
+            fontSize: currentUser.role === 'user' ? profile.fontSize : 'medium',
+            pinnedChats: currentUser.role === 'user' ? (profile.pinnedChats || []) : [],
+            mutedChats: currentUser.role === 'user' ? (profile.mutedChats || []) : [],
+            archivedChats: currentUser.role === 'user' ? (profile.archivedChats || []) : []
           },
           rooms: activeRooms.map(r => ({
             id: r.id,
@@ -345,7 +379,12 @@ module.exports = function registerSocketHandlers(io, state) {
     });
 
     // Profile updates
-    socket.on('edit_profile', async ({ username, bio, statusMsg, customThemeColor, lastSeenSetting, onlineVisibility }) => {
+    socket.on('edit_profile', async ({
+      username, bio, statusMsg, customThemeColor, lastSeenSetting, onlineVisibility,
+      displayName, mobileNumber, aboutVisibility, statusVisibility, readReceipts,
+      hideTyping, hideRecording, hideScreenshot, isGhostMode, isVerified,
+      chatWallpaper, fontSize, pinnedChats, mutedChats, archivedChats
+    }) => {
       try {
         if (currentUser.role !== 'user') return;
         const profile = await User.findOne({ userId: currentUserId });
@@ -360,6 +399,30 @@ module.exports = function registerSocketHandlers(io, state) {
           profile.onlineVisibility = onlineVisibility;
           profile.status = onlineVisibility === 'invisible' ? 'offline' : 'online';
         }
+        if (displayName !== undefined) profile.displayName = sanitizeText(displayName);
+        if (mobileNumber !== undefined) profile.mobileNumber = sanitizeText(mobileNumber);
+        if (aboutVisibility !== undefined) profile.aboutVisibility = aboutVisibility;
+        if (statusVisibility !== undefined) profile.statusVisibility = statusVisibility;
+        if (readReceipts !== undefined) profile.readReceipts = !!readReceipts;
+        if (hideTyping !== undefined) profile.hideTyping = !!hideTyping;
+        if (hideRecording !== undefined) profile.hideRecording = !!hideRecording;
+        if (hideScreenshot !== undefined) profile.hideScreenshot = !!hideScreenshot;
+        if (isGhostMode !== undefined) {
+          profile.isGhostMode = !!isGhostMode;
+          if (profile.isGhostMode) {
+            profile.onlineVisibility = 'invisible';
+            profile.status = 'offline';
+            profile.lastSeenSetting = 'nobody';
+            profile.readReceipts = false;
+            profile.hideTyping = true;
+          }
+        }
+        if (isVerified !== undefined) profile.isVerified = !!isVerified;
+        if (chatWallpaper !== undefined) profile.chatWallpaper = chatWallpaper;
+        if (fontSize !== undefined) profile.fontSize = fontSize;
+        if (pinnedChats !== undefined) profile.pinnedChats = pinnedChats;
+        if (mutedChats !== undefined) profile.mutedChats = mutedChats;
+        if (archivedChats !== undefined) profile.archivedChats = archivedChats;
 
         await profile.save();
 
@@ -369,9 +432,26 @@ module.exports = function registerSocketHandlers(io, state) {
             username: profile.username,
             bio: profile.bio,
             statusMsg: profile.statusMsg,
+            profilePhoto: profile.profilePhoto,
+            coverPhoto: profile.coverPhoto,
             customThemeColor: profile.customThemeColor,
             lastSeenSetting: profile.lastSeenSetting,
-            onlineVisibility: profile.onlineVisibility
+            onlineVisibility: profile.onlineVisibility,
+            displayName: profile.displayName,
+            mobileNumber: profile.mobileNumber,
+            aboutVisibility: profile.aboutVisibility,
+            statusVisibility: profile.statusVisibility,
+            readReceipts: profile.readReceipts,
+            hideTyping: profile.hideTyping,
+            hideRecording: profile.hideRecording,
+            hideScreenshot: profile.hideScreenshot,
+            isGhostMode: profile.isGhostMode,
+            isVerified: profile.isVerified,
+            chatWallpaper: profile.chatWallpaper,
+            fontSize: profile.fontSize,
+            pinnedChats: profile.pinnedChats || [],
+            mutedChats: profile.mutedChats || [],
+            archivedChats: profile.archivedChats || []
           }
         });
 
@@ -596,7 +676,7 @@ module.exports = function registerSocketHandlers(io, state) {
     // Send Message
     socket.on(SOCKET_EVENTS.SEND_MESSAGE, async (messageData) => {
       try {
-        const { senderId, recipientId, roomId, text, mediaUrl, mediaType, mediaName, replyToId, isPoll, pollData } = messageData;
+        const { senderId, recipientId, roomId, text, mediaUrl, mediaType, mediaName, replyToId, isPoll, pollData, disappearsAt, viewOnce } = messageData;
 
         // Verify sender global mute status
         const senderProfile = await User.findOne({ userId: senderId });
@@ -638,6 +718,8 @@ module.exports = function registerSocketHandlers(io, state) {
           mediaType,
           mediaName,
           replyToId,
+          disappearsAt: disappearsAt ? new Date(disappearsAt) : null,
+          viewOnce: !!viewOnce,
           timestamp: new Date(),
           status: 'sent',
           reactions: {},
@@ -649,6 +731,41 @@ module.exports = function registerSocketHandlers(io, state) {
         });
 
         await newMsg.save();
+
+        // Schedule server-side timer for disappearing messages
+        if (newMsg.disappearsAt) {
+          const delay = new Date(newMsg.disappearsAt).getTime() - Date.now();
+          if (delay > 0) {
+            setTimeout(async () => {
+              try {
+                const msg = await Message.findOne({ id: newMsg.id });
+                if (msg) {
+                  await Message.deleteOne({ id: newMsg.id });
+                  
+                  const deletePayload = {
+                    id: newMsg.id,
+                    roomId: newMsg.roomId,
+                    senderId: newMsg.senderId,
+                    recipientId: newMsg.recipientId,
+                    isExpired: true
+                  };
+                  
+                  if (newMsg.roomId) {
+                    io.to(newMsg.roomId).emit(SOCKET_EVENTS.DELETE_MESSAGE, deletePayload);
+                  } else {
+                    const recSocket = connectedUsers.get(newMsg.recipientId);
+                    const sndSocket = connectedUsers.get(newMsg.senderId);
+                    if (recSocket) io.to(recSocket).emit(SOCKET_EVENTS.DELETE_MESSAGE, deletePayload);
+                    if (sndSocket) io.to(sndSocket).emit(SOCKET_EVENTS.DELETE_MESSAGE, deletePayload);
+                  }
+                  logActivity('MSG_EXPIRED', `Disappearing message ${newMsg.id} expired and was erased`);
+                }
+              } catch (err) {
+                console.error('Error executing disappearing message auto-deletion:', err);
+              }
+            }, delay);
+          }
+        }
         logActivity('MSG_SEND', `Message dispatched by ${currentUser.username}`);
 
         // Broadcast Message
@@ -813,6 +930,36 @@ module.exports = function registerSocketHandlers(io, state) {
       }
     });
 
+    // View-once seen & destroyed
+    socket.on('view_once_message_seen', async ({ messageId }) => {
+      try {
+        const msg = await Message.findOne({ id: messageId });
+        if (msg && msg.viewOnce) {
+          await Message.deleteOne({ id: messageId });
+          
+          const deletePayload = {
+            id: messageId,
+            roomId: msg.roomId,
+            senderId: msg.senderId,
+            recipientId: msg.recipientId,
+            viewOnce: true
+          };
+
+          if (msg.roomId) {
+            io.to(msg.roomId).emit(SOCKET_EVENTS.DELETE_MESSAGE, deletePayload);
+          } else {
+            const recSocket = connectedUsers.get(msg.recipientId);
+            const sndSocket = connectedUsers.get(msg.senderId);
+            if (recSocket) io.to(recSocket).emit(SOCKET_EVENTS.DELETE_MESSAGE, deletePayload);
+            if (sndSocket) io.to(sndSocket).emit(SOCKET_EVENTS.DELETE_MESSAGE, deletePayload);
+          }
+          logActivity('MSG_VIEW_ONCE_DESTROY', `View-once message ${messageId} destroyed after reading`);
+        }
+      } catch (err) {
+        console.error('Error handling view once message destruction:', err);
+      }
+    });
+
     // Delete message
     socket.on(SOCKET_EVENTS.DELETE_MESSAGE, async ({ messageId, senderId }) => {
       try {
@@ -857,6 +1004,168 @@ module.exports = function registerSocketHandlers(io, state) {
         logActivity('MSG_DELETE', `Message ${messageId} deleted by ${currentUser.username}`);
       } catch (e) {
         console.error(e);
+      }
+    });
+
+    // Clear whole chat history
+    socket.on('clear_chat_history', async ({ roomId, recipientId, senderId }) => {
+      try {
+        let query = {};
+        if (roomId) {
+          query = { roomId };
+        } else if (recipientId && senderId) {
+          query = {
+            $or: [
+              { senderId, recipientId, roomId: null },
+              { senderId: recipientId, recipientId: senderId, roomId: null }
+            ]
+          };
+        } else {
+          return;
+        }
+
+        await Message.deleteMany(query);
+
+        if (roomId) {
+          io.to(roomId).emit('chat_cleared', { roomId });
+          sendSystemNotification(roomId, `Chat history was cleared by ${currentUser.username}`, { type: 'delete' });
+        } else {
+          const recSocket = connectedUsers.get(recipientId);
+          const sndSocket = connectedUsers.get(senderId);
+          if (recSocket) io.to(recSocket).emit('chat_cleared', { roomId: null, recipientId: senderId, senderId: recipientId });
+          if (sndSocket) io.to(sndSocket).emit('chat_cleared', { roomId: null, recipientId, senderId });
+        }
+
+        logActivity('CHAT_CLEAR', `Chat history cleared by ${currentUser.username}`);
+      } catch (err) {
+        console.error('Clear chat history error:', err);
+      }
+    });
+
+    // Delete selected messages (Bulk)
+    socket.on('delete_messages_bulk', async ({ messageIds, senderId }) => {
+      try {
+        if (!Array.isArray(messageIds) || messageIds.length === 0) return;
+
+        const msgs = await Message.find({ id: { $in: messageIds } });
+        if (msgs.length === 0) return;
+
+        const senderProfile = await User.findOne({ userId: senderId });
+        const adminProfile = await Admin.findOne({ adminId: senderId });
+        const isAdmin = adminProfile || (senderProfile && senderProfile.isAdmin);
+
+        const roomsToNotify = new Set();
+        const dmsToNotify = new Set();
+        const deletedIds = [];
+
+        for (const msg of msgs) {
+          let hasAuthority = (msg.senderId === senderId) || isAdmin;
+          if (msg.roomId && !hasAuthority) {
+            const room = await Room.findOne({ id: msg.roomId });
+            if (room && room.creatorId === senderId) hasAuthority = true;
+          }
+
+          if (hasAuthority) {
+            msg.deleted = true;
+            msg.text = "This message was deleted";
+            msg.mediaUrl = null;
+            msg.mediaType = null;
+            msg.mediaName = null;
+            msg.reactions = {};
+            await msg.save();
+            deletedIds.push(msg.id);
+
+            if (msg.roomId) {
+              roomsToNotify.add(msg.roomId);
+            } else {
+              dmsToNotify.add(msg.senderId);
+              dmsToNotify.add(msg.recipientId);
+            }
+          }
+        }
+
+        if (deletedIds.length > 0) {
+          roomsToNotify.forEach(rId => {
+            io.to(rId).emit('messages_deleted_bulk', { messageIds: deletedIds });
+          });
+          dmsToNotify.forEach(pId => {
+            const sId = connectedUsers.get(pId);
+            if (sId) {
+              io.to(sId).emit('messages_deleted_bulk', { messageIds: deletedIds });
+            }
+          });
+          logActivity('MSG_DELETE_BULK', `${deletedIds.length} messages deleted bulk by ${currentUser.username}`);
+        }
+      } catch (err) {
+        console.error('Bulk message deletion error:', err);
+      }
+    });
+
+    // Change Password
+    socket.on('change_password', async ({ currentPassword, newPassword }) => {
+      try {
+        const bcrypt = require('bcryptjs');
+        const profile = await User.findOne({ userId: currentUserId });
+        if (!profile) {
+          socket.emit('change_password_response', { success: false, error: 'User profile not found' });
+          return;
+        }
+
+        const matches = await bcrypt.compare(currentPassword, profile.password);
+        if (!matches) {
+          socket.emit('change_password_response', { success: false, error: 'Incorrect current password' });
+          return;
+        }
+
+        const hashed = await bcrypt.hash(newPassword, 10);
+        profile.password = hashed;
+        await profile.save();
+
+        socket.emit('change_password_response', { success: true });
+        logActivity('SECURITY_EDIT', `${profile.username} successfully updated credentials`);
+      } catch (err) {
+        console.error(err);
+        socket.emit('change_password_response', { success: false, error: 'Internal system error' });
+      }
+    });
+
+    // Delete Account
+    socket.on('delete_account', async ({ password }) => {
+      try {
+        const bcrypt = require('bcryptjs');
+        const profile = await User.findOne({ userId: currentUserId });
+        if (!profile) {
+          socket.emit('delete_account_response', { success: false, error: 'User profile not found' });
+          return;
+        }
+
+        const matches = await bcrypt.compare(password, profile.password);
+        if (!matches) {
+          socket.emit('delete_account_response', { success: false, error: 'Incorrect confirmation password' });
+          return;
+        }
+
+        // Delete all messages sent by this user
+        await Message.deleteMany({ senderId: currentUserId });
+        // Delete all rooms created by this user
+        await Room.deleteMany({ creatorId: currentUserId });
+        // Remove from members list in other rooms
+        await Room.updateMany({ members: currentUserId }, { $pull: { members: currentUserId, admins: currentUserId } });
+        // Delete notifications
+        await Notification.deleteMany({ userId: currentUserId });
+        // Delete user report history
+        await Report.deleteMany({ reportedUserId: currentUserId });
+        
+        // Delete user document
+        await User.deleteOne({ userId: currentUserId });
+
+        socket.emit('delete_account_response', { success: true });
+        logActivity('USER_DELETE', `${profile.username} permanently deleted account`);
+        
+        socket.disconnect(true);
+      } catch (err) {
+        console.error(err);
+        socket.emit('delete_account_response', { success: false, error: 'Internal server error' });
       }
     });
 
@@ -1603,20 +1912,107 @@ module.exports = function registerSocketHandlers(io, state) {
     socket.on('secret_message', ({ recipientId, text, mediaUrl, mediaType }) => {
       try {
         const recSock = connectedUsers.get(recipientId);
-        if (recSock) {
-          io.to(recSock).emit('secret_message', {
-            id: `secret_${uuidv4().substring(0,8)}`,
-            senderId: currentUserId,
-            senderName: currentUser.username,
-            recipientId,
-            text,
-            mediaUrl,
-            mediaType,
-            isSecret: true,
-            timestamp: new Date().toISOString()
-          });
-        }
+        const sndSock = connectedUsers.get(currentUserId);
+        const secretMsg = {
+          id: `secret_${uuidv4().substring(0,8)}`,
+          senderId: currentUserId,
+          senderName: currentUser.username,
+          recipientId,
+          text,
+          mediaUrl,
+          mediaType,
+          isSecret: true,
+          timestamp: new Date().toISOString()
+        };
+        if (recSock) io.to(recSock).emit('secret_message', secretMsg);
+        if (sndSock) io.to(sndSock).emit('secret_message', secretMsg);
       } catch(e) { console.error('secret_message error:', e); }
+    });
+
+    // Scheduled messages (emitted after a delay)
+    socket.on('schedule_message', ({ delayMs, messageData }) => {
+      try {
+        const delay = Number(delayMs) || 5000;
+        setTimeout(async () => {
+          try {
+            const { senderId, recipientId, roomId, text, mediaUrl, mediaType, mediaName } = messageData;
+            
+            const newMsg = new Message({
+              id: `msg_${uuidv4()}`,
+              senderId,
+              recipientId,
+              roomId,
+              text: sanitizeText(text),
+              mediaUrl,
+              mediaType,
+              mediaName,
+              timestamp: new Date(),
+              status: 'sent'
+            });
+
+            await newMsg.save();
+
+            const payload = {
+              ...newMsg.toObject(),
+              timestamp: newMsg.timestamp.toISOString()
+            };
+
+            if (roomId) {
+              io.to(roomId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+            } else if (recipientId) {
+              const recipientSocketId = connectedUsers.get(recipientId);
+              const senderSocketId = connectedUsers.get(senderId);
+              if (senderSocketId) io.to(senderSocketId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+              if (recipientSocketId) io.to(recipientSocketId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, payload);
+            }
+            logActivity('MSG_SEND_SCHEDULED', `Scheduled message sent automatically after delay`);
+          } catch (err) {
+            console.error('Scheduled message delivery error:', err);
+          }
+        }, delay);
+      } catch (e) {
+        console.error('schedule_message error:', e);
+      }
+    });
+
+    // Pin, Mute, or Archive a contact/chat room
+    socket.on('toggle_chat_status', async ({ targetId, statusType, active }) => {
+      try {
+        const profile = await User.findOne({ userId: currentUserId });
+        if (!profile) return;
+
+        if (statusType === 'pin') {
+          if (active) {
+            if (!profile.pinnedChats.includes(targetId)) profile.pinnedChats.push(targetId);
+          } else {
+            profile.pinnedChats = profile.pinnedChats.filter(id => id !== targetId);
+          }
+        } else if (statusType === 'mute') {
+          if (active) {
+            if (!profile.mutedChats.includes(targetId)) profile.mutedChats.push(targetId);
+          } else {
+            profile.mutedChats = profile.mutedChats.filter(id => id !== targetId);
+          }
+        } else if (statusType === 'archive') {
+          if (active) {
+            if (!profile.archivedChats.includes(targetId)) profile.archivedChats.push(targetId);
+          } else {
+            profile.archivedChats = profile.archivedChats.filter(id => id !== targetId);
+          }
+        }
+
+        await profile.save();
+
+        socket.emit('chat_status_updated', {
+          pinnedChats: profile.pinnedChats || [],
+          mutedChats: profile.mutedChats || [],
+          archivedChats: profile.archivedChats || []
+        });
+
+        broadcastUserList();
+      } catch (err) {
+        console.error('toggle_chat_status error:', err);
+      }
     });
 
     // Update group settings

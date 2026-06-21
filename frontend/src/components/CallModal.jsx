@@ -1,6 +1,6 @@
 // frontend/src/components/CallModal.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Tv, Monitor, Clock } from 'lucide-react';
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Tv, Monitor, Clock, ShieldCheck, Volume2, VolumeX, Radio, Camera } from 'lucide-react';
 
 function CallModal({
   callState,       // 'idle' | 'dialing' | 'receiving' | 'connected'
@@ -23,6 +23,11 @@ function CallModal({
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const [callDuration, setCallDuration] = useState(0);
+  const [noiseCancellation, setNoiseCancellation] = useState(false);
+  const [backgroundBlur, setBackgroundBlur] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingTimerRef = useRef(null);
 
   // Call timer interval
   useEffect(() => {
@@ -34,6 +39,26 @@ function CallModal({
       }, 1000);
     }
     return () => clearInterval(timer);
+  }, [callState]);
+
+  // Call Recording Timer simulation
+  useEffect(() => {
+    if (isRecording) {
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      clearInterval(recordingTimerRef.current);
+    }
+    return () => clearInterval(recordingTimerRef.current);
+  }, [isRecording]);
+
+  useEffect(() => {
+    if (callState !== 'connected') {
+      setIsRecording(false);
+      setRecordingDuration(0);
+    }
   }, [callState]);
 
   // Bind video streams on state change
@@ -232,24 +257,109 @@ function CallModal({
             flexDirection: 'column'
           }}
         >
+          {/* Keyframe Injector for recording blink */}
+          <style>{`
+            @keyframes rec-blink {
+              0%, 100% { opacity: 0.3; }
+              50% { opacity: 1; }
+            }
+          `}</style>
+
           {/* Calls Timer Display Overlay top-left */}
           <div style={{
             position: 'absolute',
             top: '20px',
             left: '20px',
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            padding: '6px 14px',
-            borderRadius: '12px',
-            color: '#fff',
             display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            zIndex: 30,
-            fontSize: '13px',
-            fontWeight: 600
+            gap: '10px',
+            zIndex: 30
           }}>
-            <Clock size={14} style={{ color: 'var(--primary)' }} />
-            {formatTimer(callDuration)}
+            <div style={{
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              padding: '6px 14px',
+              borderRadius: '12px',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '13px',
+              fontWeight: 600
+            }}>
+              <Clock size={14} style={{ color: 'var(--primary)' }} />
+              {formatTimer(callDuration)}
+            </div>
+
+            {isRecording && (
+              <div style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.25)',
+                border: '1px solid var(--danger)',
+                padding: '6px 14px',
+                borderRadius: '12px',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                boxShadow: '0 0 10px rgba(239, 68, 68, 0.3)'
+              }}>
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--danger)',
+                  display: 'inline-block',
+                  animation: 'rec-blink 1s infinite'
+                }}></span>
+                REC {formatTimer(recordingDuration)}
+              </div>
+            )}
+          </div>
+
+          {/* Active Status Badges on the top-center */}
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: '8px',
+            zIndex: 30
+          }}>
+            {noiseCancellation && (
+              <span style={{
+                backgroundColor: 'rgba(0, 168, 132, 0.2)',
+                border: '1px solid var(--primary)',
+                color: 'var(--primary)',
+                padding: '6px 12px',
+                borderRadius: '12px',
+                fontSize: '11px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 0 10px rgba(0, 168, 132, 0.2)'
+              }}>
+                <ShieldCheck size={12} /> AI NOISE FILTER
+              </span>
+            )}
+            {backgroundBlur && (
+              <span style={{
+                backgroundColor: 'rgba(0, 229, 255, 0.2)',
+                border: '1px solid #00e5ff',
+                color: '#00e5ff',
+                padding: '6px 12px',
+                borderRadius: '12px',
+                fontSize: '11px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 0 10px rgba(0, 229, 255, 0.2)'
+              }}>
+                <Camera size={12} /> BLUR ACTIVE
+              </span>
+            )}
           </div>
 
           {/* Videos Feeds Layout */}
@@ -305,7 +415,13 @@ function CallModal({
                   autoPlay 
                   playsInline 
                   muted 
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    objectFit: 'cover',
+                    filter: backgroundBlur ? 'blur(6px)' : 'none',
+                    transition: 'filter 0.3s ease'
+                  }} 
                 />
               </div>
             )}
@@ -385,6 +501,71 @@ function CallModal({
                 {isSharingScreen ? <Monitor size={20} /> : <Tv size={20} />}
               </button>
             )}
+
+            {/* Background Blur toggle (only for video call type) */}
+            {isVideoCall && (
+              <button
+                onClick={() => setBackgroundBlur(!backgroundBlur)}
+                style={{
+                  border: 'none',
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '50%',
+                  backgroundColor: backgroundBlur ? 'var(--primary)' : '#2f353d',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: backgroundBlur ? '0 0 10px var(--primary-light)' : 'none'
+                }}
+                title={backgroundBlur ? 'Disable background blur' : 'Enable background blur'}
+              >
+                <Camera size={20} />
+              </button>
+            )}
+
+            {/* Noise Cancellation toggle */}
+            <button
+              onClick={() => setNoiseCancellation(!noiseCancellation)}
+              style={{
+                border: 'none',
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: noiseCancellation ? 'var(--primary)' : '#2f353d',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: noiseCancellation ? '0 0 10px var(--primary-light)' : 'none'
+              }}
+              title={noiseCancellation ? 'Disable AI Noise Cancellation' : 'Enable AI Noise Cancellation'}
+            >
+              {noiseCancellation ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
+
+            {/* Call Recording toggle */}
+            <button
+              onClick={() => setIsRecording(!isRecording)}
+              style={{
+                border: 'none',
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: isRecording ? 'var(--danger)' : '#2f353d',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: isRecording ? '0 0 12px rgba(239, 68, 68, 0.4)' : 'none'
+              }}
+              title={isRecording ? 'Stop Call Recording' : 'Start Call Recording'}
+            >
+              <Radio size={20} className={isRecording ? 'animate-pulse' : ''} />
+            </button>
 
             {/* Hangup Red button */}
             <button

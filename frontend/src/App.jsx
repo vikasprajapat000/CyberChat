@@ -3,16 +3,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './hooks/useSocket';
 import Login from './components/Login';
 import ChatLayout from './components/ChatLayout';
+import LandingPage from './components/LandingPage';
 import { ToastContainer } from './components/Toast';
 import { SOCKET_EVENTS } from '../../shared/constants.json';
 import { playNotificationSound } from './utils/audio';
 import CallModal from './components/CallModal';
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://cyberchat-tiy0.onrender.com';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
 
 function App() {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('cc_user');
     return saved ? JSON.parse(saved) : null;
+  });
+
+  const [view, setView] = useState(() => {
+    const saved = localStorage.getItem('cc_user');
+    return saved ? 'app' : 'landing';
   });
 
   const [theme, setTheme] = useState(() => {
@@ -30,6 +36,8 @@ function App() {
   const [activeChat, setActiveChat] = useState(null); // { id, name, type: 'group'|'direct' }
   const [typingUsers, setTypingUsers] = useState({}); // { [chatId]: [username, ...] }
   const [unreadCounts, setUnreadCounts] = useState({}); // { [chatId]: count }
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   
   // Settings & Status State
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -45,6 +53,23 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Control body scrolling: allow it on the landing page, lock it on app/login screens
+  useEffect(() => {
+    if (view === 'landing') {
+      document.body.style.overflowY = 'auto';
+      document.body.style.overflowX = 'hidden';
+      document.body.style.height = 'auto';
+    } else {
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100vh';
+      document.body.style.height = '100dvh';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+    };
+  }, [view]);
 
   // Administrative Analytics State
   const [analyticsData, setAnalyticsData] = useState({
@@ -419,7 +444,12 @@ function App() {
     };
 
     const handleDeleteMessage = (deletedMsg) => {
-      setMessages(prev => prev.map(m => m.id === deletedMsg.id ? deletedMsg : m));
+      setMessages(prev => {
+        if (deletedMsg.isExpired || deletedMsg.viewOnce) {
+          return prev.filter(m => m.id !== deletedMsg.id);
+        }
+        return prev.map(m => m.id === deletedMsg.id ? { ...m, ...deletedMsg, deleted: true } : m);
+      });
     };
 
     const handlePinMessage = (pinnedMsg) => {
@@ -516,6 +546,93 @@ function App() {
       cleanupCall();
     };
 
+    const handleProfileUpdated = ({ user: updatedUser }) => {
+      setUser(prev => {
+        if (!prev || prev.id !== updatedUser.id) return prev;
+        const newU = { ...prev, ...updatedUser };
+        localStorage.setItem('cc_user', JSON.stringify(newU));
+        return newU;
+      });
+      showToast('Profile sync completed.', 'success');
+    };
+
+    const handleChatCleared = ({ roomId, recipientId, senderId }) => {
+      setMessages(prev => {
+        if (roomId) {
+          return prev.filter(m => m.roomId !== roomId);
+        } else if (recipientId && senderId) {
+          return prev.filter(m => 
+            m.roomId || 
+            !(
+              (m.senderId === senderId && m.recipientId === recipientId) ||
+              (m.senderId === recipientId && m.recipientId === senderId)
+            )
+          );
+        }
+        return prev;
+      });
+      showToast('Chat history cleared.', 'info');
+    };
+
+    const handleMessagesDeletedBulk = ({ messageIds }) => {
+      setMessages(prev => prev.map(m => {
+        if (messageIds.includes(m.id)) {
+          return {
+            ...m,
+            deleted: true,
+            text: "This message was deleted",
+            mediaUrl: null,
+            mediaType: null,
+            mediaName: null,
+            reactions: {}
+          };
+        }
+        return m;
+      }));
+      showToast('Selected messages deleted.', 'success');
+    };
+
+    const handleSecretMessage = (msg) => {
+      if (user?.blockedUsers?.includes(msg.senderId)) return;
+      
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+
+      // Start client-side 15-second timer to purge secret message
+      setTimeout(() => {
+        setMessages(prev => prev.filter(m => m.id !== msg.id));
+      }, 15000);
+
+      const chatKey = msg.senderId === user?.id ? msg.recipientId : msg.senderId;
+      const isFromActive = activeChatRef.current && activeChatRef.current.id === chatKey;
+      
+      if (!isFromActive && msg.senderId !== user?.id) {
+        setUnreadCounts(prev => ({
+          ...prev,
+          [chatKey]: (prev[chatKey] || 0) + 1
+        }));
+        if (soundEnabled) {
+          playNotificationSound();
+        }
+      }
+    };
+
+    const handleChatStatusUpdated = ({ pinnedChats, mutedChats, archivedChats }) => {
+      setUser(prev => {
+        if (!prev) return prev;
+        const updated = {
+          ...prev,
+          pinnedChats,
+          mutedChats,
+          archivedChats
+        };
+        localStorage.setItem('cc_user', JSON.stringify(updated));
+        return updated;
+      });
+    };
+
     socket.on(SOCKET_EVENTS.USER_LOGIN, handleLoginResponse);
     socket.on(SOCKET_EVENTS.USER_LIST_UPDATE, handleUserList);
     socket.on(SOCKET_EVENTS.ROOM_LIST_UPDATE, handleRoomList);
@@ -533,6 +650,11 @@ function App() {
     socket.on(SOCKET_EVENTS.CALL_REJECTED, handleCallRejected);
     socket.on(SOCKET_EVENTS.ICE_CANDIDATE, handleIceCandidate);
     socket.on(SOCKET_EVENTS.END_CALL, handleEndCall);
+    socket.on('profile_updated', handleProfileUpdated);
+    socket.on('chat_cleared', handleChatCleared);
+    socket.on('messages_deleted_bulk', handleMessagesDeletedBulk);
+    socket.on('secret_message', handleSecretMessage);
+    socket.on('chat_status_updated', handleChatStatusUpdated);
 
     return () => {
       socket.off(SOCKET_EVENTS.USER_LOGIN, handleLoginResponse);
@@ -552,6 +674,11 @@ function App() {
       socket.off(SOCKET_EVENTS.CALL_REJECTED, handleCallRejected);
       socket.off(SOCKET_EVENTS.ICE_CANDIDATE, handleIceCandidate);
       socket.off(SOCKET_EVENTS.END_CALL, handleEndCall);
+      socket.off('profile_updated', handleProfileUpdated);
+      socket.off('chat_cleared', handleChatCleared);
+      socket.off('messages_deleted_bulk', handleMessagesDeletedBulk);
+      socket.off('secret_message', handleSecretMessage);
+      socket.off('chat_status_updated', handleChatStatusUpdated);
     };
   }, [socket, user, soundEnabled, onlineUsers, rooms]);
 
@@ -572,6 +699,7 @@ function App() {
     setActiveChat(null);
     setUnreadCounts({});
     cleanupCall();
+    setView('landing');
   };
 
   const cleanupCall = () => {
@@ -813,7 +941,13 @@ function App() {
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
-      {user ? (
+      {view === 'landing' && !user ? (
+        <LandingPage 
+          onLaunch={() => setView('login')} 
+          theme={theme} 
+          toggleTheme={toggleTheme} 
+        />
+      ) : user ? (
         <ChatLayout
           user={user}
           socket={socket}
@@ -837,9 +971,30 @@ function App() {
           showToast={showToast}
           analyticsData={analyticsData}
           onStartCall={onStartCall}
+          onUserUpdate={(updatedFields) => {
+            setUser(prev => {
+              if (!prev) return prev;
+              const next = { ...prev, ...updatedFields };
+              localStorage.setItem('cc_user', JSON.stringify(next));
+              return next;
+            });
+          }}
+          isSelectionMode={isSelectionMode}
+          setIsSelectionMode={setIsSelectionMode}
+          selectedMessageIds={selectedMessageIds}
+          setSelectedMessageIds={setSelectedMessageIds}
         />
       ) : (
-        <Login onLogin={handleLogin} theme={theme} toggleTheme={toggleTheme} showToast={showToast} />
+        <Login 
+          onLogin={(u, token, remember) => {
+            handleLogin(u, token, remember);
+            setView('app');
+          }} 
+          theme={theme} 
+          toggleTheme={toggleTheme} 
+          showToast={showToast} 
+          onBack={() => setView('landing')}
+        />
       )}
 
       {/* WebRTC Calling dialog modal */}

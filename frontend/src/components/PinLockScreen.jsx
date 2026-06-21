@@ -136,7 +136,7 @@ export default function PinLockScreen({ onUnlock, apiBase }) {
           {loading ? <Unlock size={40} /> : <Lock size={40} />}
         </div>
 
-        <h2 className="pin-lock-title">CyberChat Locked</h2>
+        <h2 className="pin-lock-title">CyberChar Locked</h2>
         <p className="pin-lock-subtitle">
           {locked
             ? `Locked for ${lockTimer}s...`
