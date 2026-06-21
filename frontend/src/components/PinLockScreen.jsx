@@ -18,7 +18,7 @@ export default function PinLockScreen({ onUnlock, apiBase }) {
   useEffect(() => {
     // Check WebAuthn support
     if (window.PublicKeyCredential) {
-      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
         .then(available => setFingerprintSupported(available))
         .catch(() => setFingerprintSupported(false));
     }

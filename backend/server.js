@@ -62,6 +62,14 @@ app.use(helmet({
 // Trust Render's reverse proxy so rate limiter gets the real client IP
 app.set('trust proxy', 1);
 
+// Health check endpoints defined BEFORE rate limiter to avoid blocking health checks (429 errors)
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
 // Apply Rate Limiting to HTTP routes
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -226,10 +234,7 @@ app.post('/api/upload/group-photo', upload.single('photo'), async (req, res) => 
   }
 });
 
-// Root check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
+// Health check endpoints moved above to prevent rate-limiting (429)
 
 // Configure Socket.IO
 const io = new Server(server, {
