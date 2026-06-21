@@ -17,6 +17,9 @@ function App() {
   });
 
   const [view, setView] = useState(() => {
+    if (window.location.hash === '#register-admin') {
+      return 'login';
+    }
     const saved = localStorage.getItem('cc_user');
     return saved ? 'app' : 'landing';
   });
@@ -986,6 +989,7 @@ function App() {
         />
       ) : (
         <Login 
+          initialTab={window.location.hash === '#register-admin' ? 'register_admin' : 'login'}
           onLogin={(u, token, remember) => {
             handleLogin(u, token, remember);
             setView('app');

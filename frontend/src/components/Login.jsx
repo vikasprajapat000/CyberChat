@@ -4,8 +4,8 @@ import { Shield, ArrowRight, Sun, Moon, User, Lock, Mail, Key, KeyRound, Eye, Ey
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
 
-function Login({ onLogin, theme, toggleTheme, showToast, onBack }) {
-  const [tab, setTab] = useState('login'); // login, register_user, register_admin, forgot, reset
+function Login({ onLogin, theme, toggleTheme, showToast, onBack, initialTab = 'login' }) {
+  const [tab, setTab] = useState(initialTab); // login, register_user, register_admin, forgot, reset
 
   // Common credentials
   const [loginId, setLoginId] = useState('');
