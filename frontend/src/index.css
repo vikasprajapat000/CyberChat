@@ -31,13 +31,13 @@
   --neon-glow-cyan: 0 0 10px rgba(0, 255, 234, 0.6), 0 0 20px rgba(0, 255, 234, 0.3);
   --neon-glow-green: 0 0 10px rgba(57, 255, 20, 0.5), 0 0 20px rgba(57, 255, 20, 0.2);
 
-  /* Light Theme Variables (Modern Teal & Ice) */
-  --bg-app: #f0f2f5;
+  /* Light Theme Variables (Modern Premium) */
+  --bg-app: #f4f6f8;
   --bg-sidebar: #ffffff;
-  --bg-chat: #efeae2;
+  --bg-chat: #f0f2f5;
   --bg-panel: #ffffff;
-  --bg-glass: rgba(255, 255, 255, 0.7);
-  --border-glass: rgba(0, 0, 0, 0.08);
+  --bg-glass: rgba(255, 255, 255, 0.75);
+  --border-glass: rgba(15, 23, 42, 0.08);
   
   --primary: hsl(164, 85%, 36%);
   --primary-hover: hsl(164, 85%, 28%);
@@ -47,35 +47,35 @@
   --warning: hsl(45, 90%, 50%);
   --success: hsl(145, 80%, 40%);
   
-  --text-primary: #1e293b;
-  --text-secondary: #54656f;
-  --text-muted: #8696a0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
   --text-on-primary: #ffffff;
   
-  --msg-sent: #d9fdd3;
-  --msg-sent-text: #111b21;
+  --msg-sent: #e2f5ec;
+  --msg-sent-text: #0f172a;
   --msg-received: #ffffff;
-  --msg-received-text: #111b21;
-  --msg-system: rgba(255, 255, 255, 0.95);
-  --msg-system-text: #54656f;
+  --msg-received-text: #0f172a;
+  --msg-system: rgba(241, 245, 249, 0.95);
+  --msg-system-text: #64748b;
   
   --scrollbar-thumb: #cbd5e1;
   --scrollbar-track: transparent;
   
-  /* Left mini-sidebar (Discord style) */
-  --bg-nav: #e3e6eb;
-  --color-nav-icon: #4f5660;
-  --color-nav-active: #ffffff;
+  /* Left Sidebar Nav styling */
+  --bg-nav: #f1f5f9;
+  --color-nav-icon: #64748b;
+  --color-nav-active: #0f172a;
 }
 
-/* Dark Theme Variables (Cyberpunk Midnight) */
+/* Dark Theme Variables (Cyberpunk Midnight Overhauled) */
 [data-theme='dark'] {
-  --bg-app: #050a0e;
-  --bg-sidebar: #0a1628;
-  --bg-chat: #060c14;
-  --bg-panel: #0d1b2a;
-  --bg-glass: rgba(13, 27, 42, 0.75);
-  --border-glass: rgba(0, 245, 255, 0.08);
+  --bg-app: #090e17;
+  --bg-sidebar: #0f172a;
+  --bg-chat: #070a13;
+  --bg-panel: #1e293b;
+  --bg-glass: rgba(15, 23, 42, 0.75);
+  --border-glass: rgba(255, 255, 255, 0.06);
   
   --primary: hsl(174, 100%, 40%);
   --primary-hover: hsl(174, 100%, 50%);
@@ -85,34 +85,34 @@
   --warning: hsl(45, 95%, 55%);
   --success: hsl(145, 80%, 50%);
   
-  --text-primary: #e2f4ff;
-  --text-secondary: #7ab3d1;
-  --text-muted: #4a7a9b;
-  --text-on-primary: #020809;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --text-on-primary: #050505;
   
-  --msg-sent: rgba(0, 200, 170, 0.15);
+  --msg-sent: rgba(0, 168, 132, 0.16);
   --msg-sent-text: #ccfff5;
-  --msg-received: rgba(13, 27, 50, 0.95);
-  --msg-received-text: #daeeff;
-  --msg-system: rgba(5, 12, 22, 0.9);
-  --msg-system-text: #4a7a9b;
+  --msg-received: rgba(30, 41, 59, 0.95);
+  --msg-received-text: #f1f5f9;
+  --msg-system: rgba(15, 23, 42, 0.9);
+  --msg-system-text: #94a3b8;
   
-  --scrollbar-thumb: rgba(0, 245, 255, 0.15);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
   --scrollbar-track: transparent;
   
-  --bg-nav: #020608;
-  --color-nav-icon: #4a7a9b;
-  --color-nav-active: #00ccaa;
+  --bg-nav: #070c14;
+  --color-nav-icon: #64748b;
+  --color-nav-active: #3b82f6;
 
-  /* Cyberpunk Neon Variables */
-  --neon-blue: #00f5ff;
-  --neon-purple: #bf00ff;
-  --neon-pink: #ff0099;
-  --electric-cyan: #00ffea;
-  --cyber-green: #39ff14;
-  --neon-glow-blue: 0 0 10px rgba(0, 245, 255, 0.6), 0 0 20px rgba(0, 245, 255, 0.3), 0 0 40px rgba(0, 245, 255, 0.1);
-  --neon-glow-purple: 0 0 10px rgba(191, 0, 255, 0.5), 0 0 20px rgba(191, 0, 255, 0.25);
-  --neon-glow-cyan: 0 0 8px rgba(0, 255, 234, 0.5), 0 0 16px rgba(0, 255, 234, 0.25);
+  /* Premium Glowing Variables */
+  --neon-blue: #3b82f6;
+  --neon-purple: #8b5cf6;
+  --neon-pink: #ec4899;
+  --electric-cyan: #06b6d4;
+  --cyber-green: #10b981;
+  --neon-glow-blue: 0 0 10px rgba(59, 130, 246, 0.4), 0 0 20px rgba(59, 130, 246, 0.2);
+  --neon-glow-purple: 0 0 10px rgba(139, 92, 246, 0.3);
+  --neon-glow-cyan: 0 0 8px rgba(6, 182, 212, 0.3);
 }
 
 * {

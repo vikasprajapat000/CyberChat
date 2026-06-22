@@ -346,21 +346,22 @@ function Sidebar({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '12px 14px',
-                borderRadius: 'var(--radius-md)',
+                padding: '14px 16px',
+                borderRadius: '16px',
                 cursor: 'pointer',
-                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                transition: 'background-color var(--transition-fast)',
-                marginBottom: '4px',
-                border: isActive ? '1px solid var(--border-glass)' : '1px solid transparent'
+                backgroundColor: isActive ? 'var(--primary-light)' : 'var(--bg-panel)',
+                transition: 'all 0.2s ease',
+                marginBottom: '8px',
+                border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-glass)',
+                boxShadow: isActive ? '0 4px 12px rgba(0, 168, 132, 0.08)' : 'var(--shadow-sm)'
               }}
-              onMouseOver={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'var(--bg-panel)'; }}
-              onMouseOut={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+              onMouseOver={(e) => { if (!isActive) { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-1px)'; } }}
+              onMouseOut={(e) => { if (!isActive) { e.currentTarget.style.borderColor = 'var(--border-glass)'; e.currentTarget.style.transform = 'translateY(0)'; } }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   {chat.type === 'group' ? (
-                    <div className={`initials-avatar bg-av-5`} style={{ width: '44px', height: '44px', borderRadius: '50%', fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', justify: 'center', color: '#fff' }}>
+                    <div className={`initials-avatar bg-av-5`} style={{ width: '44px', height: '44px', borderRadius: '12px', fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', justify: 'center', color: '#fff' }}>
                       {chat.icon || '#'}
                     </div>
                   ) : (
@@ -368,7 +369,7 @@ function Sidebar({
                   )}
 
                   {chat.type === 'direct' && chat.onlineVisibility !== 'invisible' && (
-                    <span style={{ position: 'absolute', bottom: '1px', right: '1px', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: chat.status === 'online' ? 'var(--success)' : '#7ab3d1', border: '2px solid var(--bg-sidebar)' }} />
+                    <span style={{ position: 'absolute', bottom: '1px', right: '1px', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: chat.status === 'online' ? 'var(--success)' : 'var(--text-muted)', border: '2px solid var(--bg-panel)' }} />
                   )}
                 </div>
 
@@ -488,29 +489,44 @@ function Sidebar({
         borderBottom: '1px solid var(--border-glass)',
         backgroundColor: 'var(--bg-panel)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            boxShadow: '0 4px 10px rgba(0, 168, 132, 0.3)'
-          }}>
-            <MessageSquare size={18} />
-          </div>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 850, fontFamily: 'Outfit, sans-serif', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
-              CyberChat
-            </h2>
-            <span style={{ fontSize: '10px', color: connected ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700 }}>
-              <Circle size={6} fill={connected ? 'var(--success)' : 'var(--warning)'} stroke="none" />
-              {connected ? 'Standing Node' : 'Sync Offline'}
-            </span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          {isMobile ? (
+            <>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                boxShadow: '0 4px 10px rgba(0, 168, 132, 0.3)',
+                flexShrink: 0
+              }}>
+                <MessageSquare size={18} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ fontSize: '18px', fontWeight: 850, fontFamily: 'Outfit, sans-serif', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  CyberChat
+                </h2>
+                <span style={{ fontSize: '10px', color: connected ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700 }}>
+                  <Circle size={6} fill={connected ? 'var(--success)' : 'var(--warning)'} stroke="none" />
+                  {connected ? 'Standing Node' : 'Sync Offline'}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Messages
+              </h2>
+              <span style={{ fontSize: '10px', color: connected ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700, marginTop: '2px' }}>
+                <Circle size={5} fill={connected ? 'var(--success)' : 'var(--warning)'} stroke="none" />
+                {connected ? 'Connected' : 'Sync Offline'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Menu Controls */}

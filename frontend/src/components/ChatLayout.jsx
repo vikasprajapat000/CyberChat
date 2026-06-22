@@ -111,8 +111,8 @@ function ChatLayout({
   };
 
   // Render current tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
+  const renderTabContentCustom = (tabId) => {
+    switch (tabId) {
       case 'chats':
         return (
           <Sidebar
@@ -133,7 +133,7 @@ function ChatLayout({
             socket={socket}
             showToast={showToast}
             messages={messages}
-            isMobile={true} // Inside mockup screen, treat as mobile sizing
+            isMobile={isMobile}
           />
         );
       case 'stories':
@@ -175,7 +175,7 @@ function ChatLayout({
             showToast={showToast}
             messages={messages}
             setActiveTab={setActiveTab}
-            isMobile={true}
+            isMobile={isMobile}
           />
         );
       case 'premium':
@@ -192,7 +192,7 @@ function ChatLayout({
             showToast={showToast}
             messages={messages}
             setActiveTab={setActiveTab}
-            isMobile={true}
+            isMobile={isMobile}
           />
         );
       case 'ai':
@@ -202,187 +202,404 @@ function ChatLayout({
     }
   };
 
+  const getRightColumnContent = () => {
+    if (activeChat) {
+      return (
+        <ChatArea
+          user={user}
+          socket={socket}
+          connected={connected}
+          latencyQuality={latencyQuality}
+          activeChat={activeChat}
+          setActiveChat={setActiveChat}
+          messages={messages}
+          setMessages={setMessages}
+          typingUsers={typingUsers[activeChat?.id] || []}
+          onlineUsers={onlineUsers}
+          onInspectUser={handleInspectUser}
+          isMobile={isMobile}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          showToast={showToast}
+          rooms={rooms}
+          onStartCall={onStartCall}
+          isSelectionMode={isSelectionMode}
+          setIsSelectionMode={setIsSelectionMode}
+          selectedMessageIds={selectedMessageIds}
+          setSelectedMessageIds={setSelectedMessageIds}
+        />
+      );
+    }
+
+    if (['profile', 'settings', 'admin', 'premium', 'ai'].includes(activeTab)) {
+      return renderTabContentCustom(activeTab);
+    }
+
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        width: '100%',
+        backgroundColor: 'var(--bg-chat)',
+        color: 'var(--text-secondary)',
+        padding: '24px',
+        textAlign: 'center',
+        userSelect: 'none'
+      }}
+      className="glass-panel"
+      >
+        <div style={{
+          background: 'var(--primary-light)',
+          color: 'var(--primary)',
+          padding: '24px',
+          borderRadius: '24px',
+          marginBottom: '20px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 'var(--shadow-md)',
+          border: '1.5px solid var(--border-glass)'
+        }}>
+          <Sparkles size={48} className="neon-glow-cyan animate-pulse" />
+        </div>
+        <h2 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '10px', fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em' }}>
+          Select a Conversation
+        </h2>
+        <p style={{ fontSize: '14px', color: 'var(--text-muted)', maxWidth: '340px', lineHeight: '1.6' }}>
+          Choose a chat room or direct message from the left to start secure, ephemeral communication.
+        </p>
+      </div>
+    );
+  };
+
   return (
-    <div style={isMobile ? mobileWrapperStyle : desktopWrapperStyle}>
-      {/* 1. Desktop background reflection glows */}
+    <div style={{
+      width: '100vw',
+      height: '100dvh',
+      display: 'flex',
+      backgroundColor: 'var(--bg-app)',
+      overflow: 'hidden',
+      position: 'relative',
+      fontFamily: "'Outfit', sans-serif"
+    }}>
+      {/* 1. Left Sidebar Navigation (Desktop only) */}
       {!isMobile && (
-        <div style={desktopBgDecorationStyle}>
-          <div style={nebulaGlow1} />
-          <div style={nebulaGlow2} />
-          <div style={desktopOverlayTextStyle}>
-            <h1 style={{ fontSize: '32px', fontWeight: 900, fontFamily: 'Outfit', color: 'var(--primary)' }}>CyberChat Node</h1>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '280px', marginTop: '6px' }}>
-              Enforcing peer-to-peer security loops and hardware-level WebRTC tunnels.
-            </p>
+        <div style={{
+          width: '80px',
+          height: '100%',
+          backgroundColor: 'var(--bg-panel)',
+          borderRight: '1px solid var(--border-glass)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: '24px 0',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          zIndex: 110
+        }}
+        className="sidebar-desktop-nav"
+        >
+          {/* Logo */}
+          <div 
+            onClick={() => { setActiveTab('chats'); setActiveChat(null); }}
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              cursor: 'pointer',
+              transition: 'transform 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <img 
+              src="/logo.png" 
+              alt="Logo" 
+              style={{ 
+                width: '38px', 
+                height: '38px', 
+                borderRadius: '10px', 
+                border: '1.5px solid rgba(0, 168, 132, 0.3)',
+                boxShadow: '0 0 15px rgba(0, 168, 132, 0.25)'
+              }} 
+            />
+          </div>
+
+          {/* Navigation Stack */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', alignItems: 'center' }}>
+            {[
+              { id: 'chats', label: 'Chats', icon: <MessageSquare size={20} /> },
+              { id: 'stories', label: 'Stories', icon: <Camera size={20} /> },
+              { id: 'communities', label: 'Communities', icon: <Users size={20} /> },
+              { id: 'calls', label: 'Calls', icon: <Phone size={20} /> },
+              { id: 'ai', label: 'CyberAI', icon: <Bot size={20} /> },
+              { id: 'profile', label: 'Profile', icon: <User size={20} /> }
+            ].map(tab => {
+              const isActive = activeTab === tab.id || 
+                (tab.id === 'profile' && (activeTab === 'settings' || activeTab === 'premium' || activeTab === 'admin'));
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id); setActiveChat(null); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    width: '64px',
+                    height: '60px',
+                    borderRadius: '12px',
+                    transition: 'all 0.2s ease',
+                    position: 'relative',
+                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                    boxShadow: isActive ? '0 4px 12px rgba(0, 168, 132, 0.08)' : 'none'
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  title={tab.label}
+                >
+                  {tab.icon}
+                  <span style={{ fontSize: '9px', fontWeight: isActive ? 800 : 500, letterSpacing: '0.02em' }}>{tab.label}</span>
+                  {isActive && <div style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: '15px',
+                    width: '3px',
+                    height: '30px',
+                    borderRadius: '0 4px 4px 0',
+                    backgroundColor: 'var(--primary)'
+                  }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Bottom Settings & Avatar */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            {user.role === 'admin' && (
+              <button
+                onClick={() => { setActiveTab('admin'); setActiveChat(null); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: activeTab === 'admin' ? 'var(--primary)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: activeTab === 'admin' ? 'var(--primary-light)' : 'transparent',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => { if (activeTab !== 'admin') e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+                onMouseLeave={(e) => { if (activeTab !== 'admin') e.currentTarget.style.backgroundColor = 'transparent'; }}
+                title="Admin Panel"
+              >
+                <ShieldAlert size={20} />
+              </button>
+            )}
+
+            <button
+              onClick={() => { setActiveTab('settings'); setActiveChat(null); }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: activeTab === 'settings' ? 'var(--primary)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                width: '44px',
+                height: '44px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'settings' ? 'var(--primary-light)' : 'transparent',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => { if (activeTab !== 'settings') e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+              onMouseLeave={(e) => { if (activeTab !== 'settings') e.currentTarget.style.backgroundColor = 'transparent'; }}
+              title="Settings"
+            >
+              <Settings size={20} />
+            </button>
+            
+            {/* User Avatar */}
+            <div 
+              onClick={() => { setActiveTab('profile'); setActiveChat(null); }}
+              style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              {user.profilePhoto ? (
+                <img 
+                  src={`${BACKEND_URL}${user.profilePhoto}`} 
+                  alt={user.username} 
+                  style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid var(--border-glass)' }} 
+                />
+              ) : (
+                <div 
+                  className={`initials-avatar ${getAvatarBgClass(user.username)}`}
+                  style={{ width: '38px', height: '38px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}
+                >
+                  {getInitials(user.username).toUpperCase()}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* 2. Main Phone Body Viewport */}
-      <div style={isMobile ? mobileScreenStyle : desktopScreenStyle}>
-        
-        {/* Notch details for desktop mockup */}
-        {!isMobile && (
-          <div style={mockupNotchStyle}>
-            <div style={mockupCameraStyle} />
-            <div style={mockupSpeakerStyle} />
+      {/* 2. Middle Panel: Chat List / Tab Content */}
+      <div style={{
+        width: isMobile ? '100%' : '360px',
+        height: '100%',
+        display: (isMobile && activeChat) ? 'none' : 'flex',
+        flexDirection: 'column',
+        borderRight: isMobile ? 'none' : '1px solid var(--border-glass)',
+        backgroundColor: 'var(--bg-sidebar)',
+        flexShrink: 0,
+        position: 'relative'
+      }}
+      className="sidebar-chat-list-panel"
+      >
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Render Chats list when activeTab is chats/profile/settings/admin/premium/ai, else render selected tab */}
+          {renderTabContentCustom(!isMobile && ['profile', 'settings', 'admin', 'premium', 'ai'].includes(activeTab) ? 'chats' : activeTab)}
+        </div>
+
+        {/* Floating Action Button (FAB) (Only on Chats & Stories on desktop/mobile inside middle column) */}
+        {(activeTab === 'chats' || activeTab === 'stories') && (
+          <div style={{
+            position: 'absolute',
+            bottom: isMobile ? '84px' : '24px',
+            right: '20px',
+            zIndex: 90,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            {/* Speed Dial Menu */}
+            {fabOpen && (
+              <div style={speedDialContainerStyle} className="animate-fade-in">
+                <button
+                  onClick={() => { setShowNewChatModal(true); setFabOpen(false); }}
+                  style={speedDialBtnStyle}
+                  title="New Chat"
+                >
+                  <MessageSquare size={16} />
+                  <span style={speedDialLabelStyle}>New Chat</span>
+                </button>
+                
+                <button
+                  onClick={() => { setShowCreateGroupModal(true); setFabOpen(false); }}
+                  style={speedDialBtnStyle}
+                  title="New Group Room"
+                >
+                  <Users size={16} />
+                  <span style={speedDialLabelStyle}>New Group</span>
+                </button>
+
+                <button
+                  onClick={() => { setShowStoryCreatorModal(true); setFabOpen(false); }}
+                  style={speedDialBtnStyle}
+                  title="New Story"
+                >
+                  <Camera size={16} />
+                  <span style={speedDialLabelStyle}>New Story</span>
+                </button>
+              </div>
+            )}
+
+            {/* Main FAB Toggle */}
+            <button
+              onClick={() => setFabOpen(!fabOpen)}
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--primary)',
+                color: 'var(--text-on-primary)',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(0, 168, 132, 0.4)',
+                transition: 'transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                transform: fabOpen ? 'rotate(45deg)' : 'rotate(0deg)'
+              }}
+            >
+              <Plus size={24} />
+            </button>
           </div>
         )}
 
-        {/* Core application screen viewport */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          overflow: 'hidden',
-          height: '100%'
-        }}>
-          {activeChat ? (
-            /* Active Chat Overlay - takes full screen height, no bottom nav */
-            <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <ChatArea
-                user={user}
-                socket={socket}
-                connected={connected}
-                latencyQuality={latencyQuality}
-                activeChat={activeChat}
-                setActiveChat={setActiveChat}
-                messages={messages}
-                setMessages={setMessages}
-                typingUsers={typingUsers[activeChat?.id] || []}
-                onlineUsers={onlineUsers}
-                onInspectUser={handleInspectUser}
-                isMobile={true} // inside the phone frame, always use mobile layout rules
-                theme={theme}
-                toggleTheme={toggleTheme}
-                showToast={showToast}
-                rooms={rooms}
-                onStartCall={onStartCall}
-                isSelectionMode={isSelectionMode}
-                setIsSelectionMode={setIsSelectionMode}
-                selectedMessageIds={selectedMessageIds}
-                setSelectedMessageIds={setSelectedMessageIds}
-              />
-            </div>
-          ) : (
-            /* Regular Tabs Viewport */
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
-              
-              {/* Tab Screen Content */}
-              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                {renderTabContent()}
-              </div>
+        {/* Mobile bottom nav */}
+        {isMobile && (
+          <div style={bottomNavBarStyle}>
+            {[
+              { id: 'chats', label: 'Chats', icon: <MessageSquare size={20} /> },
+              { id: 'stories', label: 'Stories', icon: <Camera size={20} /> },
+              { id: 'communities', label: 'Communities', icon: <Users size={20} /> },
+              { id: 'calls', label: 'Calls', icon: <Phone size={20} /> },
+              { id: 'profile', label: 'Profile', icon: <User size={20} /> }
+            ].map(tab => {
+              const isActive = activeTab === tab.id || 
+                (tab.id === 'profile' && (activeTab === 'settings' || activeTab === 'premium' || activeTab === 'admin'));
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id); setActiveChat(null); }}
+                  style={{
+                    flex: 1,
+                    background: 'none',
+                    border: 'none',
+                    color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    padding: '8px 0',
+                    transition: 'all 0.2s',
+                    position: 'relative'
+                  }}
+                >
+                  {tab.icon}
+                  <span style={{ fontSize: '10px', fontWeight: isActive ? 800 : 500 }}>{tab.label}</span>
+                  {isActive && <div style={activeNavDotStyle} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-              {/* Floating Action Button (FAB) (Only on Chats & Stories) */}
-              {(activeTab === 'chats' || activeTab === 'stories') && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '84px',
-                  right: '20px',
-                  zIndex: 90,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '12px'
-                }}>
-                  {/* Speed Dial Menu */}
-                  {fabOpen && (
-                    <div style={speedDialContainerStyle} className="animate-fade-in">
-                      <button
-                        onClick={() => { setShowNewChatModal(true); setFabOpen(false); }}
-                        style={speedDialBtnStyle}
-                        title="New Chat"
-                      >
-                        <MessageSquare size={16} />
-                        <span style={speedDialLabelStyle}>New Chat</span>
-                      </button>
-                      
-                      <button
-                        onClick={() => { setShowCreateGroupModal(true); setFabOpen(false); }}
-                        style={speedDialBtnStyle}
-                        title="New Group Room"
-                      >
-                        <Users size={16} />
-                        <span style={speedDialLabelStyle}>New Group</span>
-                      </button>
-
-                      <button
-                        onClick={() => { setShowStoryCreatorModal(true); setFabOpen(false); }}
-                        style={speedDialBtnStyle}
-                        title="New Story"
-                      >
-                        <Camera size={16} />
-                        <span style={speedDialLabelStyle}>New Story</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Main FAB Toggle */}
-                  <button
-                    onClick={() => setFabOpen(!fabOpen)}
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--primary)',
-                      color: 'var(--text-on-primary)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 16px rgba(0, 168, 132, 0.4)',
-                      transition: 'transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                      transform: fabOpen ? 'rotate(45deg)' : 'rotate(0deg)'
-                    }}
-                  >
-                    <Plus size={28} />
-                  </button>
-                </div>
-              )}
-
-              {/* Bottom Navigation Bar */}
-              <div style={bottomNavBarStyle}>
-                {[
-                  { id: 'chats', label: 'Chats', icon: <MessageSquare size={20} /> },
-                  { id: 'stories', label: 'Stories', icon: <Camera size={20} /> },
-                  { id: 'communities', label: 'Communities', icon: <Users size={20} /> },
-                  { id: 'calls', label: 'Calls', icon: <Phone size={20} /> },
-                  { id: 'profile', label: 'Profile', icon: <User size={20} /> }
-                ].map(tab => {
-                  const isActive = activeTab === tab.id || 
-                    (tab.id === 'profile' && (activeTab === 'settings' || activeTab === 'premium' || activeTab === 'admin'));
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => { setActiveTab(tab.id); setActiveChat(null); }}
-                      style={{
-                        flex: 1,
-                        background: 'none',
-                        border: 'none',
-                        color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        cursor: 'pointer',
-                        padding: '8px 0',
-                        transition: 'all 0.2s',
-                        position: 'relative'
-                      }}
-                    >
-                      {tab.icon}
-                      <span style={{ fontSize: '10px', fontWeight: isActive ? 800 : 500 }}>{tab.label}</span>
-                      {isActive && <div style={activeNavDotStyle} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+      {/* 3. Right Panel: Active Chat or Dashboard (Desktop only) */}
+      <div style={{
+        flex: 1,
+        height: '100%',
+        display: (isMobile && !activeChat) ? 'none' : 'flex',
+        flexDirection: 'column',
+        backgroundColor: 'var(--bg-chat)',
+        position: 'relative'
+      }}
+      className="main-chat-window-panel"
+      >
+        {/* Render either ChatArea, Selected Wide Tab, or Welcome screen */}
+        {getRightColumnContent()}
+      </div>
 
         {/* G. Inspect User Modal overlay */}
         {inspectedUser && (
@@ -502,7 +719,6 @@ function ChatLayout({
         )}
 
       </div>
-    </div>
   );
 }
 

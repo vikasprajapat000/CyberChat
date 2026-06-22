@@ -5,7 +5,7 @@ import {
   Copy, X, Image as ImageIcon, FileText, ArrowLeft, Star, Forward,
   ChevronDown, AlertTriangle, Info, Eye, ShieldAlert, Phone, Video,
   Mic, MicOff, BarChart2, CheckSquare, ExternalLink, HelpCircle, Sticker,
-  Lock, Clock, MapPin, Languages, ClipboardList, Camera
+  Lock, Clock, MapPin, Languages, ClipboardList, Camera, MessageSquare, Sparkles
 } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import ForwardModal from './ForwardModal';
@@ -222,30 +222,47 @@ function ChatArea({
         height: '100%',
         width: '100%',
         backgroundColor: 'var(--bg-chat)',
-        color: 'var(--text-secondary)',
         padding: '24px',
-        textAlign: 'center',
         userSelect: 'none'
       }}>
-        <div style={{
-          background: 'var(--primary-light)',
-          color: 'var(--primary)',
-          padding: '20px',
-          borderRadius: '50%',
-          marginBottom: '16px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: 'var(--shadow-sm)'
-        }}>
-          <HelpCircle size={48} />
+        <div 
+          className="glass-panel animate-scale"
+          style={{
+            padding: '40px 32px',
+            borderRadius: '24px',
+            textAlign: 'center',
+            maxWidth: '400px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            boxShadow: 'var(--shadow-lg)'
+          }}
+        >
+          <div style={{
+            background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
+            color: '#fff',
+            padding: '24px',
+            borderRadius: '20px',
+            marginBottom: '24px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(0, 168, 132, 0.25)'
+          }}>
+            <MessageSquare size={48} />
+          </div>
+          <h2 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '12px', fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em' }}>
+            CyberChat Premium
+          </h2>
+          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '24px' }}>
+            Select a channel or direct chat to start messaging in real-time on our secure, lightning-fast communications network.
+          </p>
+          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+            <span>🔒 End-to-End Encryption</span>
+            <span>•</span>
+            <span>⚡ Real-time Sync</span>
+          </div>
         </div>
-        <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px', fontFamily: 'Outfit, sans-serif' }}>
-          Select a Conversation
-        </h2>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', maxWidth: '320px', lineHeight: '1.5' }}>
-          Choose a public channel or direct contact from the sidebar to begin messaging in real-time.
-        </p>
       </div>
     );
   }
@@ -879,20 +896,39 @@ function ChatArea({
       
       {/* A. Core Chat Area Workspace Panel */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
-        
         {/* Chat Area Header Banner */}
         <div style={{
-          padding: isMobile ? '10px 12px' : '12px 24px',
+          padding: isMobile ? '10px 16px' : '14px 24px',
           borderBottom: '1px solid var(--border-glass)',
-          backgroundColor: 'var(--bg-panel)',
+          backgroundColor: 'var(--bg-glass)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          flexShrink: 0
+          flexShrink: 0,
+          zIndex: 10
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             {isMobile && (
-              <button onClick={() => setActiveChat(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex' }}>
+              <button 
+                onClick={() => setActiveChat(null)} 
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-primary)', 
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  transition: 'background-color var(--transition-fast)'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <ArrowLeft size={20} />
               </button>
             )}
@@ -903,7 +939,7 @@ function ChatArea({
               style={{ cursor: activeChat.type === 'direct' ? 'pointer' : 'default', position: 'relative' }}
             >
               {activeChat.type === 'direct' && onlineUsers.find(u => u.id === activeChat.id)?.profilePhoto ? (
-                <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1.5px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '50%', overflow: 'hidden', border: '1.5px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <img 
                     src={`${BACKEND_URL}${onlineUsers.find(u => u.id === activeChat.id).profilePhoto}`} 
                     alt={activeChat.name} 
@@ -911,7 +947,7 @@ function ChatArea({
                   />
                 </div>
               ) : (
-                <div className={`initials-avatar ${getAvatarBgClass(activeChat.name)}`} style={{ width: '40px', height: '40px', fontSize: '15px' }}>
+                <div className={`initials-avatar ${getAvatarBgClass(activeChat.name)}`} style={{ width: '42px', height: '42px', fontSize: '15px' }}>
                   {activeChat.type === 'group' ? '#' : getInitials(activeChat.name)}
                 </div>
               )}
@@ -921,16 +957,16 @@ function ChatArea({
             <div style={{ minWidth: 0 }}>
               <h3 
                 onClick={() => activeChat.type === 'direct' && onInspectUser(activeChat.id)}
-                style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', cursor: activeChat.type === 'direct' ? 'pointer' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', cursor: activeChat.type === 'direct' ? 'pointer' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.01em', margin: 0 }}
               >
                 {activeChat.name}
               </h3>
               {typingUsers.length > 0 ? (
-                <span style={{ fontSize: '11px', color: 'var(--primary)', fontStyle: 'italic', fontWeight: 600 }}>
+                <span style={{ fontSize: '11px', color: 'var(--primary)', fontStyle: 'italic', fontWeight: 700 }}>
                   {typingUsers.join(', ')} typing...
                 </span>
               ) : (
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500 }}>
                   {activeChat.type === 'group' 
                     ? rooms.find(r => r.id === activeChat.id)?.description || 'Group chat'
                     : 'direct messaging'}
@@ -940,14 +976,29 @@ function ChatArea({
           </div>
 
           {/* Header Controls (Video / Audio Calling, Links drawer) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             {/* 1. Video Call button (Direct Chats Only) */}
             {activeChat.type === 'direct' && (
               <button
                 onClick={() => onStartCall(activeChat.id, true)}
                 disabled={!connected}
                 data-tooltip="Initiate Video Call"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  padding: '8px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  transition: 'all var(--transition-fast)'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <Video size={18} />
               </button>
@@ -959,7 +1010,22 @@ function ChatArea({
                 onClick={() => onStartCall(activeChat.id, false)}
                 disabled={!connected}
                 data-tooltip="Initiate Audio Call"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  padding: '8px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  transition: 'all var(--transition-fast)'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <Phone size={18} />
               </button>
@@ -969,7 +1035,22 @@ function ChatArea({
             <button
               onClick={() => { setShowLinksDrawer(!showLinksDrawer); setShowGroupDrawer(false); }}
               data-tooltip="Shared Links"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: showLinksDrawer ? 'var(--primary)' : 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
+              style={{
+                background: showLinksDrawer ? 'var(--primary-light)' : 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: showLinksDrawer ? 'var(--primary)' : 'var(--text-secondary)',
+                padding: '8px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '36px',
+                height: '36px',
+                transition: 'all var(--transition-fast)'
+              }}
+              onMouseEnter={(e) => { if (!showLinksDrawer) e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+              onMouseLeave={(e) => { if (!showLinksDrawer) e.currentTarget.style.backgroundColor = 'transparent'; }}
             >
               <ExternalLink size={18} />
             </button>
@@ -979,7 +1060,22 @@ function ChatArea({
               <button
                 onClick={() => { setShowGroupDrawer(!showGroupDrawer); setShowLinksDrawer(false); }}
                 data-tooltip="Group Notes & Tasks"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: showGroupDrawer ? 'var(--primary)' : 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
+                style={{
+                  background: showGroupDrawer ? 'var(--primary-light)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: showGroupDrawer ? 'var(--primary)' : 'var(--text-secondary)',
+                  padding: '8px',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  transition: 'all var(--transition-fast)'
+                }}
+                onMouseEnter={(e) => { if (!showGroupDrawer) e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+                onMouseLeave={(e) => { if (!showGroupDrawer) e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
                 <ClipboardList size={18} />
               </button>
@@ -989,7 +1085,22 @@ function ChatArea({
             <button
               onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearchQuery(''); }}
               data-tooltip="Search Message Text (Alt + S)"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: searchOpen ? 'var(--primary)' : 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
+              style={{
+                background: searchOpen ? 'var(--primary-light)' : 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: searchOpen ? 'var(--primary)' : 'var(--text-secondary)',
+                padding: '8px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '36px',
+                height: '36px',
+                transition: 'all var(--transition-fast)'
+              }}
+              onMouseEnter={(e) => { if (!searchOpen) e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+              onMouseLeave={(e) => { if (!searchOpen) e.currentTarget.style.backgroundColor = 'transparent'; }}
             >
               <Search size={18} />
             </button>
@@ -1220,14 +1331,17 @@ function ChatArea({
                         style={{
                           padding: '10px 14px',
                           borderRadius: isSelf 
-                            ? '16px 4px 16px 16px' 
-                            : '4px 16px 16px 16px',
-                          backgroundColor: isSelf 
-                            ? 'var(--msg-sent)' 
+                            ? '18px 18px 4px 18px' 
+                            : '18px 18px 18px 4px',
+                          background: isSelf 
+                            ? (theme === 'dark' 
+                                ? 'linear-gradient(135deg, rgba(0, 168, 132, 0.22) 0%, rgba(0, 168, 132, 0.1) 100%)' 
+                                : 'linear-gradient(135deg, #e2f5ec 0%, #d1f4e4 100%)')
                             : (msg.senderId === 'ai' ? 'var(--primary-light)' : 'var(--msg-received)'),
                           color: isSelf ? 'var(--msg-sent-text)' : 'var(--msg-received-text)',
                           position: 'relative',
-                          border: msg.senderId === 'ai' ? '1px solid var(--primary)' : '1px solid var(--border-glass)'
+                          border: msg.senderId === 'ai' ? '1px solid var(--primary)' : (isSelf ? 'none' : '1px solid var(--border-glass)'),
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                         }}
                       >
                         {msg.pinned && (
@@ -1252,15 +1366,15 @@ function ChatArea({
                         {/* Reply Preview */}
                         {parentMsg && (
                           <div style={{
-                            backgroundColor: isSelf ? 'rgba(0,0,0,0.05)' : 'var(--bg-app)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.04)',
                             borderLeft: '3px solid var(--primary)',
                             padding: '6px 10px',
-                            borderRadius: '4px',
+                            borderRadius: '8px',
                             marginBottom: '6px',
                             fontSize: '12px',
                             cursor: 'pointer'
                           }} onClick={() => handleJumpToMessage(parentMsg.id)}>
-                            <span style={{ fontWeight: 700, display: 'block', color: 'var(--primary)' }}>
+                            <span style={{ fontWeight: 800, display: 'block', color: 'var(--primary)', marginBottom: '2px' }}>
                               {parentMsg.senderId === user.id ? 'You' : (onlineUsers.find(u => u.id === parentMsg.senderId)?.username || 'User')}
                             </span>
                             <span style={{ color: 'var(--text-secondary)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1661,16 +1775,26 @@ function ChatArea({
           </div>
         ) : (
           <div style={{
-            padding: isMobile ? '10px 12px' : '12px 24px',
-            borderTop: '1px solid var(--border-glass)',
-            backgroundColor: 'var(--bg-panel)',
+            padding: isMobile ? '8px 12px 12px 12px' : '12px 24px 24px 24px',
+            borderTop: 'none',
+            backgroundColor: 'transparent',
             position: 'relative',
             flexShrink: 0
           }}>
 
           {/* Smart replies picker panel */}
           {inputFocused && !inputText.trim() && (
-            <div style={{ display: 'flex', gap: '8px', padding: '6px 12px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-glass)', borderRadius: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <div style={{ 
+              display: 'flex', 
+              gap: '8px', 
+              padding: '10px 14px', 
+              backgroundColor: 'var(--bg-panel)', 
+              border: '1px solid var(--border-glass)', 
+              borderRadius: '16px', 
+              marginBottom: '8px', 
+              flexWrap: 'wrap',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
               {['Sounds good! 👍', 'Sure, let\'s do it', 'Let\'s sync up later.'].map((reply, i) => (
                 <button
                   key={i}
@@ -1680,14 +1804,23 @@ function ChatArea({
                     showToast('AI quick reply selected!', 'info');
                   }}
                   style={{
-                    backgroundColor: 'rgba(0, 168, 132, 0.1)',
-                    border: '1.5px solid var(--primary)',
-                    color: 'var(--text-primary)',
-                    borderRadius: '16px',
-                    padding: '4px 10px',
+                    backgroundColor: 'var(--primary-light)',
+                    border: '1px solid var(--primary)',
+                    color: 'var(--primary)',
+                    borderRadius: '12px',
+                    padding: '6px 12px',
                     fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all var(--transition-fast)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--primary)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--primary-light)';
+                    e.currentTarget.style.color = 'var(--primary)';
                   }}
                 >
                   {reply}
@@ -1698,14 +1831,24 @@ function ChatArea({
 
           {/* Scheduled & Vanish indicators */}
           {(scheduledDelay !== null || vanishModeEnabled) && (
-            <div style={{ display: 'flex', gap: '10px', padding: '6px 12px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-glass)', borderRadius: '8px', marginBottom: '8px', alignItems: 'center' }}>
+            <div style={{ 
+              display: 'flex', 
+              gap: '10px', 
+              padding: '10px 14px', 
+              backgroundColor: 'var(--bg-panel)', 
+              border: '1px solid var(--border-glass)', 
+              borderRadius: '16px', 
+              marginBottom: '8px', 
+              alignItems: 'center',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
               {vanishModeEnabled && (
-                <span style={{ fontSize: '11px', color: '#a855f7', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '11px', color: '#a855f7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Lock size={12} /> Vanish Mode (Secret Chat Active)
                 </span>
               )}
               {scheduledDelay !== null && (
-                <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Clock size={12} /> Scheduled Message: {scheduledDelay / 1000}s Delay
                 </span>
               )}
@@ -1714,16 +1857,44 @@ function ChatArea({
           
           {/* Reply Preview */}
           {replyingTo && (
-            <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderLeft: '4px solid var(--primary)', borderRadius: '6px', marginBottom: '10px' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              padding: '10px 14px', 
+              backgroundColor: 'var(--bg-panel)', 
+              border: '1px solid var(--border-glass)',
+              borderLeft: '4px solid var(--primary)', 
+              borderRadius: '16px', 
+              marginBottom: '8px',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
               <div style={{ fontSize: '12px', minWidth: 0 }}>
-                <span style={{ fontWeight: 700, display: 'block', color: 'var(--primary)' }}>
+                <span style={{ fontWeight: 800, display: 'block', color: 'var(--primary)', marginBottom: '2px' }}>
                   Replying to {replyingTo.senderId === user.id ? 'yourself' : (onlineUsers.find(u => u.id === replyingTo.senderId)?.username || 'User')}
                 </span>
                 <span style={{ color: 'var(--text-secondary)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {replyingTo.text || '📁 Media attachment'}
                 </span>
               </div>
-              <button onClick={() => setReplyingTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              <button 
+                onClick={() => setReplyingTo(null)} 
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  transition: 'background-color var(--transition-fast)'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <X size={16} />
               </button>
             </div>
@@ -1731,14 +1902,42 @@ function ChatArea({
 
           {/* Editing Preview */}
           {editingMessage && (
-            <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', padding: '8px 12px', backgroundColor: 'var(--primary-light)', borderLeft: '4px solid var(--primary)', borderRadius: '6px', marginBottom: '10px' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              padding: '10px 14px', 
+              backgroundColor: 'var(--bg-panel)', 
+              border: '1px solid var(--border-glass)',
+              borderLeft: '4px solid var(--primary)', 
+              borderRadius: '16px', 
+              marginBottom: '8px',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
               <div style={{ fontSize: '12px', minWidth: 0 }}>
-                <span style={{ fontWeight: 700, display: 'block', color: 'var(--primary)' }}>Editing Message</span>
+                <span style={{ fontWeight: 800, display: 'block', color: 'var(--primary)', marginBottom: '2px' }}>Editing Message</span>
                 <span style={{ color: 'var(--text-secondary)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Original: "{editingMessage.text}"
                 </span>
               </div>
-              <button onClick={() => { setEditingMessage(null); setInputText(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              <button 
+                onClick={() => { setEditingMessage(null); setInputText(''); }} 
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  transition: 'background-color var(--transition-fast)'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
                 <X size={16} />
               </button>
             </div>
@@ -1746,17 +1945,45 @@ function ChatArea({
 
           {/* Upload File Preview */}
           {filePreview && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-glass)', marginBottom: '10px', position: 'relative' }}>
+            <div style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '12px', 
+              padding: '10px 14px', 
+              backgroundColor: 'var(--bg-panel)', 
+              borderRadius: '16px', 
+              border: '1px solid var(--border-glass)', 
+              marginBottom: '8px', 
+              position: 'relative',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
               {selectedFile?.type?.startsWith('image/') ? (
-                <img src={filePreview} alt="Preview" style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '4px' }} />
+                <img src={filePreview} alt="Preview" style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '8px' }} />
               ) : (
                 <FileText size={32} style={{ color: 'var(--primary)' }} />
               )}
               <div style={{ maxWidth: '180px' }}>
-                <span style={{ display: 'block', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFile?.name}</span>
-                <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)' }}>{selectedFile ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB` : ''}</span>
+                <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>{selectedFile?.name}</span>
+                <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{selectedFile ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB` : ''}</span>
               </div>
-              <button onClick={() => { setSelectedFile(null); setFilePreview(null); }} style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-glass)', borderRadius: '50%', padding: '2px', cursor: 'pointer', color: 'var(--text-secondary)', position: 'absolute', top: '-8px', right: '-8px' }}>
+              <button 
+                onClick={() => { setSelectedFile(null); setFilePreview(null); }} 
+                style={{ 
+                  background: 'var(--bg-panel)', 
+                  border: '1px solid var(--border-glass)', 
+                  borderRadius: '50%', 
+                  padding: '4px', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-secondary)', 
+                  position: 'absolute', 
+                  top: '-8px', 
+                  right: '-8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+              >
                 <X size={12} />
               </button>
             </div>
@@ -2052,8 +2279,19 @@ function ChatArea({
             </div>
           )}
 
-          {/* Composer Form Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', width: '100%' }}>
+          {/* Composer Form Controls Unified Pill */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: isMobile ? '6px' : '10px', 
+            width: '100%',
+            backgroundColor: 'var(--bg-panel)',
+            borderRadius: '24px',
+            padding: '6px 12px',
+            border: '1px solid var(--border-glass)',
+            boxShadow: 'var(--shadow-md)',
+            boxSizing: 'border-box'
+          }}>
             
             {/* Left buttons (Emoji & Attachment) */}
             {!isRecording && (
@@ -2064,7 +2302,22 @@ function ChatArea({
                   onClick={() => setEmojiPickerOpen(!emojiPickerOpen)}
                   disabled={isRecording}
                   title="Emojis"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    cursor: 'pointer', 
+                    color: 'var(--text-secondary)', 
+                    padding: '8px', 
+                    borderRadius: '50%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    transition: 'all var(--transition-fast)',
+                    width: '36px',
+                    height: '36px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <Smile size={18} />
                 </button>
@@ -2082,11 +2335,16 @@ function ChatArea({
                     color: showAttachmentPopover ? 'var(--primary)' : 'var(--text-secondary)', 
                     padding: '8px', 
                     borderRadius: '50%', 
-                    backgroundColor: showAttachmentPopover ? 'var(--primary-light)' : 'var(--bg-app)',
+                    backgroundColor: showAttachmentPopover ? 'var(--primary-light)' : 'transparent',
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'center' 
+                    justifyContent: 'center',
+                    transition: 'all var(--transition-fast)',
+                    width: '36px',
+                    height: '36px'
                   }}
+                  onMouseEnter={(e) => { if (!showAttachmentPopover) e.currentTarget.style.backgroundColor = 'var(--bg-app)'; }}
+                  onMouseLeave={(e) => { if (!showAttachmentPopover) e.currentTarget.style.backgroundColor = 'transparent'; }}
                 >
                   <Paperclip size={18} style={{ transform: 'rotate(45deg)' }} />
                 </button>
@@ -2098,21 +2356,19 @@ function ChatArea({
             {/* Main composer text input or recording widget */}
             {isRecording ? (
               <div 
-                className="glass-panel"
                 style={{
                   flex: 1,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 18px',
-                  borderRadius: 'var(--radius-lg)',
-                  backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)'
+                  padding: '4px 8px',
+                  borderRadius: '16px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.08)'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: 'var(--danger)' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--danger)', display: 'inline-block', animation: 'pulseBorder 1s infinite' }} />
-                  <span>Recording Voice Note: {formatTimer(recordingDuration)}</span>
+                  <span>Recording Voice: {formatTimer(recordingDuration)}</span>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {/* Cancel */}
@@ -2122,7 +2378,7 @@ function ChatArea({
                 </div>
               </div>
             ) : (
-              // Standard composer text input
+              // Standard composer text input (Clean and borderless)
               <input
                 type="text"
                 placeholder={
@@ -2130,7 +2386,7 @@ function ChatArea({
                     ? 'Save edits...' 
                     : selectedFile 
                       ? 'Add caption...' 
-                      : 'Type message here (Press Enter)...'
+                      : 'Type message here...'
                 }
                 value={inputText}
                 onChange={handleInputChange}
@@ -2140,10 +2396,9 @@ function ChatArea({
                 disabled={!connected || uploading}
                 style={{
                   flex: 1,
-                  padding: isMobile ? '10px 12px' : '12px 18px',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid var(--border-glass)',
-                  backgroundColor: 'var(--bg-app)',
+                  padding: isMobile ? '8px 4px' : '10px 8px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
                   color: 'var(--text-primary)',
                   outline: 'none',
                   fontSize: '14px'
@@ -2160,7 +2415,22 @@ function ChatArea({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                   title="Camera / Photo"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    cursor: 'pointer', 
+                    color: 'var(--text-secondary)', 
+                    padding: '8px', 
+                    borderRadius: '50%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    transition: 'all var(--transition-fast)',
+                    width: '36px',
+                    height: '36px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   <Camera size={18} />
                 </button>
@@ -2175,13 +2445,23 @@ function ChatArea({
                       color: '#fff',
                       border: 'none',
                       borderRadius: '50%',
-                      width: isMobile ? '36px' : '42px',
-                      height: isMobile ? '36px' : '42px',
+                      width: '36px',
+                      height: '36px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      flexShrink: 0
+                      flexShrink: 0,
+                      transition: 'all var(--transition-fast)',
+                      boxShadow: '0 2px 8px rgba(0, 168, 132, 0.3)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--primary)';
+                      e.currentTarget.style.transform = 'scale(1)';
                     }}
                   >
                     <Send size={16} />
@@ -2193,18 +2473,21 @@ function ChatArea({
                     disabled={!connected}
                     title="Record Voice Note"
                     style={{
-                      backgroundColor: 'var(--bg-app)',
+                      backgroundColor: 'transparent',
                       color: 'var(--text-secondary)',
                       border: 'none',
                       borderRadius: '50%',
-                      width: isMobile ? '36px' : '42px',
-                      height: isMobile ? '36px' : '42px',
+                      width: '36px',
+                      height: '36px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      flexShrink: 0
+                      flexShrink: 0,
+                      transition: 'all var(--transition-fast)'
                     }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-app)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <Mic size={18} />
                   </button>
