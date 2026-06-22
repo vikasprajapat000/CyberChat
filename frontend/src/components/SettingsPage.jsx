@@ -5,7 +5,7 @@ import {
   ArrowLeft, Trash2, Key, Phone, Mail, Lock, Volume2, Bell, 
   Smartphone, EyeOff, ShieldAlert, Monitor, Sparkles, 
   MapPin, BadgeCheck, Camera, CheckSquare, HelpCircle,
-  ShieldCheck, RefreshCw, Zap, Database, ChevronRight, Info
+  ShieldCheck, RefreshCw, Zap, Database, ChevronRight, Info, Crown
 } from 'lucide-react';
 import StorageManager from './StorageManager';
 

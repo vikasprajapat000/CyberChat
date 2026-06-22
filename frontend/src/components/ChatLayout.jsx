@@ -783,4 +783,11 @@ const getAvatarBgClass = (name) => {
   return `bg-av-${(code % 8) + 1}`;
 };
 
+const getInitials = (name) => {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2);
+  return (parts[0][0] + parts[1][0]).substring(0, 2);
+};
+
 export default ChatLayout;
