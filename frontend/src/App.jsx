@@ -66,8 +66,7 @@ function App() {
     if (window.location.hash === '#register-admin') {
       return 'login';
     }
-    const saved = localStorage.getItem('cc_user');
-    return saved ? 'app' : 'landing';
+    return 'landing';
   });
 
   const [theme, setTheme] = useState(() => {
@@ -1121,13 +1120,20 @@ function App() {
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
-      {view === 'landing' && !user ? (
+      {view === 'landing' ? (
         <LandingPage 
-          onLaunch={() => setView('login')} 
+          onLaunch={() => {
+            if (user) {
+              setView('app');
+            } else {
+              setView('login');
+            }
+          }} 
           theme={theme} 
           toggleTheme={toggleTheme} 
+          user={user}
         />
-      ) : user ? (
+      ) : view === 'app' && user ? (
         <ChatLayout
           user={user}
           socket={socket}

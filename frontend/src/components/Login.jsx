@@ -1,6 +1,6 @@
 // frontend/src/components/Login.jsx
 import React, { useState, useEffect } from 'react';
-import { Shield, ArrowRight, Sun, Moon, User, Lock, Mail, Key, KeyRound, Eye, EyeOff, QrCode } from 'lucide-react';
+import { Shield, ArrowRight, Sun, Moon, User, Lock, Mail, Key, KeyRound, Eye, EyeOff, QrCode, Home } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
 
@@ -386,7 +386,7 @@ function Login({ onLogin, theme, toggleTheme, showToast, onBack, initialTab = 'l
       overflowY: 'auto',
       boxSizing: 'border-box'
     }}>
-      {/* Back to Website button Top Left */}
+      {/* Home button Top Left */}
       <button
         onClick={onBack}
         className="glass-panel"
@@ -405,10 +405,19 @@ function Login({ onLogin, theme, toggleTheme, showToast, onBack, initialTab = 'l
           boxShadow: 'var(--shadow-sm)',
           zIndex: 10,
           fontWeight: 600,
-          fontSize: '12px'
+          fontSize: '12px',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
         }}
       >
-        ← Back to Website
+        <Home size={14} style={{ color: 'var(--primary)' }} /> Home
       </button>
 
       {/* Theme Toggle Top Right */}

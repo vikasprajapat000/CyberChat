@@ -23,7 +23,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 
-function LandingPage({ onLaunch, theme, toggleTheme }) {
+function LandingPage({ onLaunch, theme, toggleTheme, user }) {
   const [activePage, setActivePage] = useState('home');
   const containerRef = useRef(null);
   const heroMockupRef = useRef(null);
@@ -347,7 +347,7 @@ function LandingPage({ onLaunch, theme, toggleTheme }) {
             gap: '10px'
           }}
         >
-          Enter Dashboard <ArrowRight size={18} />
+          {user ? 'Enter Chat' : 'Get In / Register'} <ArrowRight size={18} />
         </button>
         <button 
           onClick={() => navigateToPage('features')}
@@ -835,7 +835,7 @@ function LandingPage({ onLaunch, theme, toggleTheme }) {
                 transition: 'transform 0.2s ease'
               }}
             >
-              Get Started
+              {user ? 'Go to Chat' : 'Get In / Register'}
             </button>
 
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
@@ -1087,7 +1087,7 @@ function LandingPage({ onLaunch, theme, toggleTheme }) {
             boxShadow: '0 4px 20px rgba(0, 168, 132, 0.4)'
           }}
         >
-          Launch Platform <ArrowRight size={15} />
+          {user ? 'Go to Chat' : 'Get In / Register'} <ArrowRight size={15} />
         </button>
       </nav>
 
