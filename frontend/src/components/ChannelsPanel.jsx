@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, CheckCircle, Bell, BellOff, Megaphone, X, Users } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-nhlc.onrender.com');
 
 const CHANNEL_EMOJIS = ['📢', '🎙️', '📰', '💡', '🎯', '🔔', '🌟', '🎬', '🎤', '📊', '🏆', '🛒'];
 const CHANNEL_CATEGORIES = ['General', 'News', 'Technology', 'Business', 'Entertainment', 'Sports', 'Education', 'Gaming'];

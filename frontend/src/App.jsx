@@ -8,7 +8,7 @@ import { ToastContainer } from './components/Toast';
 import { SOCKET_EVENTS } from '../../shared/constants.json';
 import { playNotificationSound, startIncomingRingtone, startOutgoingRingtone, stopRingtone } from './utils/audio';
 import CallModal from './components/CallModal';
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-nhlc.onrender.com');
 
 // Global fetch interceptor to handle short-lived JWT access token auto-refresh transparently
 const originalFetch = window.fetch;

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Navigation, Search, MapPin, Compass } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-nhlc.onrender.com');
 
 function SnapMapModal({ user, onlineUsers, onClose, showToast }) {
   const canvasRef = useRef(null);
