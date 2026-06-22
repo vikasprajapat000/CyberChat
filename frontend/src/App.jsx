@@ -104,18 +104,32 @@ function App() {
 
   // Control body scrolling: allow it on the landing page, lock it on app/login screens
   useEffect(() => {
+    const rootEl = document.getElementById('root');
     if (view === 'landing') {
       document.body.style.overflowY = 'auto';
       document.body.style.overflowX = 'hidden';
       document.body.style.height = 'auto';
+      if (rootEl) {
+        rootEl.style.overflow = 'visible';
+        rootEl.style.height = 'auto';
+      }
     } else {
       document.body.style.overflow = 'hidden';
       document.body.style.height = '100vh';
       document.body.style.height = '100dvh';
+      if (rootEl) {
+        rootEl.style.overflow = 'hidden';
+        rootEl.style.height = '100vh';
+        rootEl.style.height = '100dvh';
+      }
     }
     return () => {
       document.body.style.overflow = '';
       document.body.style.height = '';
+      if (rootEl) {
+        rootEl.style.overflow = '';
+        rootEl.style.height = '';
+      }
     };
   }, [view]);
 
