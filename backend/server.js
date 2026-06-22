@@ -78,11 +78,41 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests from this IP, please try again later.' }
 });
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts. Please try again in 15 minutes.' }
+});
+
+app.use('/api/auth', authLimiter);
 app.use('/api', apiLimiter);
 
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Custom lightweight NoSQL Injection prevention middleware
+const mongoSanitize = (req, res, next) => {
+  const sanitize = (obj) => {
+    if (obj && typeof obj === 'object') {
+      for (const key in obj) {
+        if (key.startsWith('$')) {
+          delete obj[key];
+        } else {
+          sanitize(obj[key]);
+        }
+      }
+    }
+  };
+  sanitize(req.body);
+  sanitize(req.query);
+  sanitize(req.params);
+  next();
+};
+app.use(mongoSanitize);
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);

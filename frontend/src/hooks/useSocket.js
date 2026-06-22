@@ -44,10 +44,40 @@ export const useSocket = () => {
       }
     });
 
-    socket.on('connect_error', (err) => {
+    socket.on('connect_error', async (err) => {
+      console.warn('Socket connect error:', err);
+
+      if (err.message && (err.message.includes('Authentication error') || err.message.includes('Token') || err.message.includes('token'))) {
+        const refreshToken = localStorage.getItem('cc_refresh_token');
+        if (refreshToken) {
+          try {
+            const res = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken })
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.accessToken) {
+                localStorage.setItem('cc_token', data.accessToken);
+                if (data.refreshToken) {
+                  localStorage.setItem('cc_refresh_token', data.refreshToken);
+                }
+
+                socket.auth.token = data.accessToken;
+                socket.connect();
+                return;
+              }
+            }
+          } catch (e) {
+            console.error('[CyberChat Socket] Failed to refresh token on connection error:', e);
+          }
+        }
+      }
+
       setConnected(false);
       setError('Connection failed. Retrying...');
-      console.warn('Socket connect error:', err);
     });
 
     return socket;

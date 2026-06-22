@@ -169,7 +169,7 @@ function StoryViewer({ feed, startUserIdx, startStoryIdx = 0, onClose, onView, c
 }
 
 // Story Creator Component
-function StoryCreator({ onClose, onCreated }) {
+export function StoryCreator({ onClose, onCreated }) {
   const [type, setType] = useState('text');
   const [text, setText] = useState('');
   const [bgColor, setBgColor] = useState(BG_COLORS[0]);

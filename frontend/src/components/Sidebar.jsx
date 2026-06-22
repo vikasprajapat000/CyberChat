@@ -1,14 +1,14 @@
 // frontend/src/components/Sidebar.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, MessageSquarePlus, LogOut, Volume2, VolumeX, Bell, BellOff,
-  User, Hash, Circle, RefreshCw, X, ShieldAlert, Star, Lock,
-  MessageSquare, LayoutGrid, Key, Calendar, Save, ClipboardList, PenTool,
-  UserPlus, MoreHorizontal, Trash2, Pin, Archive, Map, Flame,
-  Camera, Bot, Globe, Tv, Crown
+  Search, LogOut, Volume2, VolumeX, Bell, BellOff,
+  User, Hash, Circle, RefreshCw, X, ShieldAlert, Star,
+  MessageSquare, LayoutGrid, Key, MoreHorizontal, Trash2, Pin, Archive, Map, Flame,
+  Camera, Bot, Globe, Tv, Crown, Lock, ChevronRight, MessageCircle, Plus, Sparkles
 } from 'lucide-react';
 import MyProfileModal from './MyProfileModal';
 import SnapMapModal from './SnapMapModal';
+import NotificationCenter from './NotificationCenter';
 
 function Sidebar({
   user,
@@ -26,15 +26,9 @@ function Sidebar({
   requestNotificationPermission,
   logout,
   socket,
-  activeTab,
-  setActiveTab,
   showToast,
   messages,
-  isMobile,
-  isSelectionMode,
-  setIsSelectionMode,
-  selectedMessageIds,
-  setSelectedMessageIds
+  isMobile
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false);
@@ -42,68 +36,16 @@ function Sidebar({
   const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const [showSnapMap, setShowSnapMap] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
-  
-  // Room Creation states
-  const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomDesc, setNewRoomDesc] = useState('');
-  const [newRoomIcon, setNewRoomIcon] = useState('💬');
-  const [newRoomPrivate, setNewRoomPrivate] = useState(false);
-  const [newRoomPasscode, setNewRoomPasscode] = useState('');
-  const [createRoomError, setCreateRoomError] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all'); // all, DMs (personal), Groups
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
 
   // Private Room passcode prompt states
   const [promptRoomId, setPromptRoomId] = useState(null);
   const [enteredPasscode, setEnteredPasscode] = useState('');
   const [passcodeError, setPasscodeError] = useState('');
 
-  // Local state for Starred Messages
-  const [starredMessageIds, setStarredMessageIds] = useState([]);
-
-  // Productivity states
-  const [taskNameInput, setTaskNameInput] = useState('');
-  const [taskAssigneeId, setTaskAssigneeId] = useState('');
-
-  // Profile menu state
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  // Load starred messages on mount
-  useEffect(() => {
-    const saved = localStorage.getItem(`cc_starred_${user.id}`);
-    if (saved) setStarredMessageIds(JSON.parse(saved));
-  }, [user.id]);
-
-  // Sync starred changes
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const saved = localStorage.getItem(`cc_starred_${user.id}`);
-      if (saved) setStarredMessageIds(JSON.parse(saved));
-    };
-    window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(handleStorageChange, 2000);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, [user.id]);
-
-  const handleClearActiveChat = () => {
-    if (!socket || !connected || !activeChat) return;
-    const confirmClear = window.confirm('Are you sure you want to permanently clear this chat history? This action cannot be undone.');
-    if (confirmClear) {
-      socket.emit('clear_chat_history', {
-        roomId: activeChat.type === 'group' ? activeChat.id : null,
-        recipientId: activeChat.type === 'direct' ? activeChat.id : null,
-        senderId: user.id
-      });
-    }
-  };
-
-  const handleStartSelectionMode = () => {
-    setIsSelectionMode(true);
-    setSelectedMessageIds([]);
-  };
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
 
   const getInitials = (name) => {
     if (!name) return '?';
@@ -148,53 +90,25 @@ function Sidebar({
         ) : (
           <div 
             className={`initials-avatar ${getAvatarBgClass(userObj.username)}`}
-            style={{ width: '100%', height: '100%', fontSize: fontSize, display: 'flex', alignItems: 'center', justify: 'center' }}
+            style={{ width: '100%', height: '100%', fontSize: fontSize, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}
           >
-            {getInitials(userObj.username)}
+            {getInitials(userObj.username).toUpperCase()}
           </div>
         )}
       </div>
     );
   };
 
-  const handleCreateRoomSubmit = (e) => {
-    e.preventDefault();
-    const name = newRoomName.trim();
-    if (!name) return;
-    
-    if (name.length < 3) {
-      setCreateRoomError('Room name must be at least 3 characters');
-      return;
-    }
-
-    if (newRoomPrivate && !newRoomPasscode.trim()) {
-      setCreateRoomError('Private rooms require a passcode');
-      return;
-    }
-
-    socket.emit('create_room', {
-      name,
-      description: newRoomDesc.trim(),
-      icon: newRoomIcon,
-      isPrivate: newRoomPrivate,
-      passcode: newRoomPasscode.trim(),
-      creatorId: user.id
-    });
-
-    setNewRoomName('');
-    setNewRoomDesc('');
-    setNewRoomIcon('💬');
-    setNewRoomPrivate(false);
-    setNewRoomPasscode('');
-    setCreateRoomError('');
-    setShowCreateRoom(false);
-    showToast('Group Room created successfully!', 'success');
-  };
-
   const handlePasscodeSubmit = (e) => {
     e.preventDefault();
     const targetRoom = rooms.find(r => r.id === promptRoomId);
     if (!targetRoom) return;
+
+    if (targetRoom.passcode !== enteredPasscode) {
+      setPasscodeError('Incorrect passcode');
+      showToast('Incorrect passcode for private room', 'error');
+      return;
+    }
 
     socket.emit('join_room', {
       roomId: promptRoomId,
@@ -220,96 +134,6 @@ function Sidebar({
     }
   };
 
-  // Productivity handlers
-  const handleNotesChange = (e) => {
-    if (!activeChat || activeChat.type !== 'group') return;
-    socket.emit('sync_notes', {
-      roomId: activeChat.id,
-      notesText: e.target.value
-    });
-  };
-
-  const handleAddTask = (e) => {
-    e.preventDefault();
-    if (!activeChat || activeChat.type !== 'group' || !taskNameInput.trim()) return;
-
-    socket.emit('create_task', {
-      roomId: activeChat.id,
-      taskName: taskNameInput.trim(),
-      taskAssigneeId: taskAssigneeId || user.id
-    });
-
-    setTaskNameInput('');
-    setTaskAssigneeId('');
-    showToast('Task assigned!', 'success');
-  };
-
-  const handleToggleTask = (taskId, currentlyCompleted) => {
-    if (!activeChat || activeChat.type !== 'group') return;
-    socket.emit('update_task', {
-      roomId: activeChat.id,
-      taskId,
-      completed: !currentlyCompleted
-    });
-  };
-
-  // Filters
-  const filteredRooms = rooms.filter(room => 
-    room.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const getStreak = (username) => {
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
-    return (hash % 12) + 2; 
-  };
-
-  const getFriendEmoji = (username) => {
-    const emojis = ['😎', '✨', '👾', '🔥', '👑', '🌈', '⚡', '🦄'];
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
-    return emojis[hash % emojis.length];
-  };
-
-  // Contacts and Request filters
-  const myContacts = onlineUsers.filter(u => 
-    u.id !== user.id && 
-    (user.contacts || []).includes(u.id)
-  );
-
-  const displayContacts = myContacts.filter(u => {
-    const isArchived = user.archivedChats?.includes(u.id);
-    return showArchivedOnly ? isArchived : !isArchived;
-  });
-
-  const filteredContacts = displayContacts.filter(u => 
-    u.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const sortedContacts = [...filteredContacts].sort((a, b) => {
-    const aPinned = user.pinnedChats?.includes(a.id) ? 1 : 0;
-    const bPinned = user.pinnedChats?.includes(b.id) ? 1 : 0;
-    return bPinned - aPinned;
-  });
-
-  const discoverUsers = onlineUsers.filter(u => 
-    u.id !== user.id && 
-    !(user.contacts || []).includes(u.id) &&
-    u.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const incomingRequestsList = onlineUsers.filter(u =>
-    (user.receivedRequests || []).includes(u.id)
-  );
-
-  const starredMessagesList = messages.filter(m => starredMessageIds.includes(m.id));
-
-  // Find active room notes / tasks details
-  const activeRoomObj = activeChat && activeChat.type === 'group' ? rooms.find(r => r.id === activeChat.id) : null;
-  const activeRoomNotes = activeRoomObj?.notes || '';
-  const activeRoomTasks = activeRoomObj?.tasks || [];
-  const activeRoomMembers = activeRoomObj?.members || [];
-
   const formatLastSeen = (isoStr) => {
     if (!isoStr) return 'offline';
     const date = new Date(isoStr);
@@ -324,917 +148,743 @@ function Sidebar({
     return date.toLocaleDateString();
   };
 
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: isMobile ? 'column-reverse' : 'row',
-      height: '100%',
-      backgroundColor: 'var(--bg-sidebar)',
-      borderRight: isMobile ? 'none' : '1px solid var(--border-glass)'
-    }}>
-      
-      {/* 1. Leftmost or Bottom Discord mini nav bar */}
-      <div style={{
-        width: isMobile ? '100%' : '72px',
-        height: isMobile ? '64px' : '100%',
-        backgroundColor: 'var(--bg-nav)',
-        display: 'flex',
-        flexDirection: isMobile ? 'row' : 'column',
-        alignItems: 'center',
-        justifyContent: isMobile ? 'space-around' : 'flex-start',
-        padding: isMobile ? '0 10px' : '16px 0',
-        gap: isMobile ? '0' : '12px',
-        flexShrink: 0,
-        borderTop: isMobile ? '1px solid var(--border-glass)' : 'none'
-      }}>
-        {/* Chats Tab */}
-        <button
-          onClick={() => setActiveTab('chats')}
-          className={`nav-tab-btn ${activeTab === 'chats' ? 'active' : ''}`}
-          data-tooltip="Chat Conversations"
-        >
-          <MessageSquare size={20} />
-        </button>
+  const formatMessageTime = (isoStr) => {
+    if (!isoStr) return '';
+    const date = new Date(isoStr);
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
 
-        {/* Productivity Tab */}
-        <button
-          onClick={() => setActiveTab('productivity')}
-          className={`nav-tab-btn ${activeTab === 'productivity' ? 'active' : ''}`}
-          data-tooltip="Notes & Shared Tasks"
-        >
-          <Calendar size={20} />
-        </button>
+  const getStreak = (username) => {
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
+    return (hash % 12) + 2; 
+  };
 
-        {/* Starred Tab */}
-        <button
-          onClick={() => setActiveTab('starred')}
-          className={`nav-tab-btn ${activeTab === 'starred' ? 'active' : ''}`}
-          data-tooltip="Starred Messages"
-        >
-          <Star size={20} />
-        </button>
+  const getFriendEmoji = (username) => {
+    const emojis = ['😎', '✨', '👾', '🔥', '👑', '🌈', '⚡', '🦄'];
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
+    return emojis[hash % emojis.length];
+  };
 
-        {/* Settings Tab */}
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-          data-tooltip="Aesthetics & Profile Settings"
-        >
-          <LayoutGrid size={20} />
-        </button>
+  // Compile a unified list of chats (DMs + Rooms)
+  const getConversations = () => {
+    // 1. DMs (Contacts or active DMs)
+    const dmUserIds = new Set();
+    messages.forEach(m => {
+      if (!m.roomId) {
+        if (m.senderId !== user.id) dmUserIds.add(m.senderId);
+        if (m.recipientId && m.recipientId !== user.id) dmUserIds.add(m.recipientId);
+      }
+    });
+    // Include all contacts
+    (user.contacts || []).forEach(cid => dmUserIds.add(cid));
 
-        {/* Snap Map Button */}
-        <button
-          onClick={() => setShowSnapMap(true)}
-          className="nav-tab-btn"
-          data-tooltip="Snap Map Grid"
-        >
-          <Map size={20} />
-        </button>
+    const directChats = Array.from(dmUserIds).map(uid => {
+      const u = onlineUsers.find(ou => ou.id === uid) || { id: uid, username: uid, status: 'offline', statusMsg: '' };
+      const chatMsgs = messages.filter(m => !m.roomId && (m.senderId === uid || m.recipientId === uid));
+      const lastMsg = chatMsgs[chatMsgs.length - 1];
+      return {
+        id: uid,
+        name: u.displayName || u.username || uid,
+        username: u.username || uid,
+        type: 'direct',
+        status: u.status,
+        lastSeen: u.lastSeen,
+        lastSeenSetting: u.lastSeenSetting,
+        onlineVisibility: u.onlineVisibility,
+        profilePhoto: u.profilePhoto,
+        coverPhoto: u.coverPhoto,
+        isVerified: u.isVerified,
+        premiumTier: u.premiumTier,
+        statusMsg: u.statusMsg,
+        bio: u.bio,
+        lastMessage: lastMsg,
+        timestamp: lastMsg ? new Date(lastMsg.timestamp) : new Date(0),
+        unread: unreadCounts[uid] || 0
+      };
+    });
 
-        {/* Stories Tab */}
-        <button
-          id="nav-tab-stories"
-          onClick={() => setActiveTab('stories')}
-          className={`nav-tab-btn ${activeTab === 'stories' ? 'active' : ''}`}
-          data-tooltip="Stories & Status"
-        >
-          <Camera size={20} />
-        </button>
+    // 2. Group Rooms
+    const groupChats = rooms.filter(room => 
+      room.members?.includes(user.id) || room.creatorId === user.id || room.creatorId === 'system'
+    ).map(room => {
+      const chatMsgs = messages.filter(m => m.roomId === room.id);
+      const lastMsg = chatMsgs[chatMsgs.length - 1];
+      return {
+        id: room.id,
+        name: room.name,
+        type: 'group',
+        icon: room.icon || '💬',
+        isPrivate: room.isPrivate,
+        creatorId: room.creatorId,
+        members: room.members,
+        description: room.description,
+        lastMessage: lastMsg,
+        timestamp: lastMsg ? new Date(lastMsg.timestamp) : new Date(0),
+        unread: unreadCounts[room.id] || 0
+      };
+    });
 
-        {/* AI Tab */}
-        <button
-          id="nav-tab-ai"
-          onClick={() => setActiveTab('ai')}
-          className={`nav-tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
-          data-tooltip="CyberAI Assistant"
-        >
-          <Bot size={20} />
-        </button>
+    // Combine
+    let all = [...directChats, ...groupChats];
 
-        {/* Communities Tab */}
-        <button
-          id="nav-tab-communities"
-          onClick={() => setActiveTab('communities')}
-          className={`nav-tab-btn ${activeTab === 'communities' ? 'active' : ''}`}
-          data-tooltip="Communities"
-        >
-          <Globe size={20} />
-        </button>
+    // Search filter
+    if (searchTerm.trim()) {
+      all = all.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }
 
-        {/* Channels Tab */}
-        <button
-          id="nav-tab-channels"
-          onClick={() => setActiveTab('channels')}
-          className={`nav-tab-btn ${activeTab === 'channels' ? 'active' : ''}`}
-          data-tooltip="Broadcast Channels"
-        >
-          <Tv size={20} />
-        </button>
+    // Filter chip selector
+    if (activeFilter === 'direct') {
+      all = all.filter(c => c.type === 'direct');
+    } else if (activeFilter === 'group') {
+      all = all.filter(c => c.type === 'group');
+    }
 
-        {/* Premium Tab */}
-        <button
-          id="nav-tab-premium"
-          onClick={() => setActiveTab('premium')}
-          className={`nav-tab-btn ${activeTab === 'premium' ? 'active' : ''}`}
-          data-tooltip="Premium Plans"
-          style={activeTab === 'premium' ? { color: '#a855f7' } : {}}
-        >
-          <Crown size={20} />
-        </button>
+    // Archive toggle
+    all = all.filter(c => {
+      const isArchived = user.archivedChats?.includes(c.id);
+      return showArchivedOnly ? isArchived : !isArchived;
+    });
 
-        {/* Admin Dashboard (visible to Admins only) */}
-        {user.isAdmin && (
-          <button
-            id="nav-tab-admin"
-            onClick={() => setActiveTab('admin')}
-            className={`nav-tab-btn ${activeTab === 'admin' ? 'active' : ''}`}
-            data-tooltip="Admin Control Panel"
-          >
-            <ShieldAlert size={20} />
-          </button>
-        )}
-      </div>
+    // Sorting: Pinned first, then by last message timestamp (newest first), then alphabetically
+    return all.sort((a, b) => {
+      const aPinned = user.pinnedChats?.includes(a.id) ? 1 : 0;
+      const bPinned = user.pinnedChats?.includes(b.id) ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
 
-      {/* 2. Main Sidebar Content Column */}
-      {activeTab !== 'admin' && activeTab !== 'settings' && activeTab !== 'stories' && activeTab !== 'ai' && activeTab !== 'communities' && activeTab !== 'channels' && activeTab !== 'premium' && (
-        <div style={{
-          flex: 1,
+      const aTime = a.timestamp.getTime();
+      const bTime = b.timestamp.getTime();
+      if (aTime !== bTime) return bTime - aTime;
+
+      return a.name.localeCompare(b.name);
+    });
+  };
+
+  const conversations = getConversations();
+  const pinnedChats = conversations.filter(c => user.pinnedChats?.includes(c.id));
+  const unreadChats = conversations.filter(c => c.unread > 0 && !user.pinnedChats?.includes(c.id));
+  const recentChats = conversations.filter(c => !user.pinnedChats?.includes(c.id) && c.unread === 0);
+
+  // Search discovery users
+  const discoverUsers = onlineUsers.filter(u => 
+    u.id !== user.id && 
+    !(user.contacts || []).includes(u.id) &&
+    u.username.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const incomingRequestsList = onlineUsers.filter(u =>
+    (user.receivedRequests || []).includes(u.id)
+  );
+
+  const handleClearActiveChat = (c) => {
+    if (!socket || !connected) return;
+    const confirmClear = window.confirm('Are you sure you want to permanently clear this chat history? This action cannot be undone.');
+    if (confirmClear) {
+      socket.emit('clear_chat_history', {
+        roomId: c.type === 'group' ? c.id : null,
+        recipientId: c.type === 'direct' ? c.id : null,
+        senderId: user.id
+      });
+      showToast('Chat history cleared', 'info');
+    }
+  };
+
+  const renderChatSection = (chatList, sectionTitle) => {
+    if (chatList.length === 0) return null;
+    return (
+      <div style={{ marginBottom: '16px' }}>
+        <h4 style={{
+          fontSize: '11px',
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+          padding: '6px 12px',
+          letterSpacing: '0.05em',
+          margin: '0 0 6px 0',
           display: 'flex',
-          flexDirection: 'column',
-          minWidth: 0,
-          position: 'relative'
+          alignItems: 'center',
+          gap: '6px'
         }}>
-          {/* Header Banner */}
-          <div style={{
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid var(--border-glass)',
-            backgroundColor: 'var(--bg-panel)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowProfileMenu(!showProfileMenu)}>
-                {renderAvatar(user, '36px', '14px')}
-                
-                {/* Profile Dropdown Menu */}
-                {showProfileMenu && (
-                  <>
-                    <div 
-                      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
-                      onClick={() => setShowProfileMenu(false)}
-                    />
-                    <div style={{
-                      position: 'absolute',
-                      top: '44px',
-                      left: '0',
-                      backgroundColor: 'var(--bg-panel)',
-                      border: '1px solid var(--border-glass)',
-                      borderRadius: '8px',
-                      boxShadow: 'var(--shadow-md)',
-                      zIndex: 100,
-                      width: '180px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      padding: '8px'
-                    }}>
-                      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-glass)', marginBottom: '4px' }}>
-                        <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.username}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{user.isAdmin ? 'Admin' : 'Standard'}</span>
-                      </div>
-                      
-                      <button
-                        onClick={() => { setSoundEnabled(!soundEnabled); setShowProfileMenu(false); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                        {soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}
-                      </button>
+          {sectionTitle} ({chatList.length})
+        </h4>
+        {chatList.map(chat => {
+          const isActive = activeChat && activeChat.id === chat.id;
+          const isTyping = (typingUsers[chat.id] || []).length > 0;
+          const isBlocked = user.blockedUsers?.includes(chat.id);
+          const isPinned = user.pinnedChats?.includes(chat.id);
+          const isMuted = user.mutedChats?.includes(chat.id);
+          const isArchived = user.archivedChats?.includes(chat.id);
+          const isHovered = hoveredId === chat.id;
 
-                      <button
-                        onClick={() => { requestNotificationPermission(); setShowProfileMenu(false); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: notificationsPermission === 'granted' ? 'var(--primary)' : 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        {notificationsPermission === 'granted' ? <Bell size={16} /> : <BellOff size={16} />}
-                        Alerts
-                      </button>
+          let previewText = '';
+          if (isTyping) {
+            previewText = 'typing...';
+          } else if (chat.lastMessage) {
+            const prefix = chat.lastMessage.senderId === user.id ? 'You: ' : '';
+            previewText = prefix + (chat.lastMessage.text || '📁 Media Attachment');
+          } else {
+            previewText = chat.type === 'group' ? (chat.description || 'No description.') : (chat.statusMsg || 'Hey there!');
+          }
 
-                      <button
-                        onClick={() => { logout(); setShowProfileMenu(false); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%', marginTop: '4px', borderTop: '1px solid var(--border-glass)' }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <LogOut size={16} />
-                        Logout
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'Outfit', color: 'var(--text-primary)' }}>
-                  {activeTab === 'chats' && 'CyberChat'}
-                  {activeTab === 'productivity' && 'Workspace Center'}
-                  {activeTab === 'starred' && 'Starred Items'}
-                  {activeTab === 'stories' && 'Stories'}
-                  {activeTab === 'ai' && 'CyberAI'}
-                  {activeTab === 'communities' && 'Communities'}
-                  {activeTab === 'channels' && 'Channels'}
-                  {activeTab === 'premium' && 'Premium'}
-                </h2>
-                <span style={{ fontSize: '11px', color: connected ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                  <Circle size={8} fill={connected ? 'var(--success)' : 'var(--warning)'} stroke="none" />
-                  {connected ? 'Sync Connected' : 'Reconnecting...'}
-                </span>
-              </div>
-            </div>
-
-            {/* Menu Options (Three Dot Menu) */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setShowThreeDotMenu(!showThreeDotMenu)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  display: 'flex',
-                  padding: '8px',
-                  borderRadius: '50%',
-                  transition: 'background-color var(--transition-fast)'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                data-tooltip="Menu Options"
-              >
-                <MoreHorizontal size={20} />
-              </button>
-
-              {showThreeDotMenu && (
-                <>
-                  <div 
-                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
-                    onClick={() => setShowThreeDotMenu(false)}
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    top: '36px',
-                    right: '0',
-                    backgroundColor: 'var(--bg-panel)',
-                    border: '1px solid var(--border-glass)',
-                    borderRadius: '8px',
-                    boxShadow: 'var(--shadow-md)',
-                    zIndex: 100,
-                    width: '200px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    padding: '8px',
-                    textAlign: 'left'
-                  }}>
-                    {/* My Profile */}
-                    <button
-                      onClick={() => { setShowThreeDotMenu(false); setShowMyProfileModal(true); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <User size={16} />
-                      My Profile Info
-                    </button>
-
-                    {/* Delete Active Chat / Select to Delete */}
-                    {activeChat && (
-                      <>
-                        <button
-                          onClick={() => { setShowThreeDotMenu(false); handleClearActiveChat(); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
-                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          <Trash2 size={16} />
-                          Clear Chat History
-                        </button>
-                        <button
-                          onClick={() => { setShowThreeDotMenu(false); handleStartSelectionMode(); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
-                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          <ClipboardList size={16} />
-                          Select to Delete
-                        </button>
-                      </>
-                    )}
-
-                    {/* Workspace Settings */}
-                    <button
-                      onClick={() => { setShowThreeDotMenu(false); setActiveTab('settings'); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <LayoutGrid size={16} />
-                      Workspace Settings
-                    </button>
-
-                    {/* Mute/Unmute sounds */}
-                    <button
-                      onClick={() => { setSoundEnabled(!soundEnabled); setShowThreeDotMenu(false); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                      {soundEnabled ? 'Mute Soundscape' : 'Unmute Soundscape'}
-                    </button>
-
-                    {/* Logout */}
-                    <button
-                      onClick={() => { logout(); setShowThreeDotMenu(false); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%', marginTop: '4px', borderTop: '1px solid var(--border-glass)' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <LogOut size={16} />
-                      Logout Platform
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Connection warning banner */}
-          {!connected && (
-            <div style={{
-              backgroundColor: 'var(--warning)',
-              color: '#111b21',
-              padding: '6px 16px',
-              fontSize: '11px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              animation: 'wiggle 0.5s ease infinite'
-            }}>
-              <RefreshCw size={12} className="animate-spin" style={{ animationDuration: '2s' }} />
-              Connection lost. Syncing...
-            </div>
-          )}
-
-          {/* Ambient Soundscape Player widget */}
-          <AmbientAudioWidget showToast={showToast} />
-
-
-
-          {/* Search box (visible in Chats tab) */}
-          {activeTab === 'chats' && (
-            <div style={{ padding: '12px 18px' }}>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  placeholder="Search contacts..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px 10px 36px',
-                    borderRadius: 'var(--radius-md)',
-                    border: 'none',
-                    backgroundColor: 'var(--bg-panel)',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    fontSize: '13px',
-                    boxShadow: 'var(--shadow-sm)'
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Scrollable list items */}
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '0 8px 16px 8px'
-          }}>
-            {activeTab === 'chats' && (
-              <>
-
-
-                {/* Incoming Contact Requests */}
-                {incomingRequestsList.length > 0 && (
-                  <div style={{ marginBottom: '20px' }}>
-                    <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 12px', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Bell size={12} style={{ color: 'var(--primary)' }} /> Contact Requests ({incomingRequestsList.length})
-                    </h3>
-                    {incomingRequestsList.map(u => (
-                      <div
-                        key={u.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '10px 12px',
-                          borderRadius: 'var(--radius-md)',
-                          backgroundColor: 'var(--primary-light)',
-                          border: '1px solid var(--border-glass)',
-                          marginBottom: '4px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                          {renderAvatar(u, '32px', '13px')}
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</h4>
-                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>wants to connect</span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            onClick={() => socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id })}
-                            style={{
-                              backgroundColor: 'var(--primary)',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => socket.emit('decline_contact_request', { userId: user.id, targetUserId: u.id })}
-                            style={{
-                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                              color: 'var(--danger)',
-                              border: '1px solid rgba(239, 68, 68, 0.2)',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Contacts list */}
-                <div style={{ marginBottom: '24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px' }}>
-                    <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', margin: 0 }}>
-                      {showArchivedOnly ? 'Archived Chats' : 'Contacts'} ({sortedContacts.length})
-                    </h3>
-                    <button
-                      onClick={() => setShowArchivedOnly(!showArchivedOnly)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: showArchivedOnly ? 'var(--primary)' : 'var(--text-muted)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        fontSize: '11px',
-                        fontWeight: 600
-                      }}
-                      title={showArchivedOnly ? "Show Active Chats" : "Show Archived Chats"}
-                    >
-                      <Archive size={12} />
-                      {showArchivedOnly ? "Active" : "Archived"}
-                    </button>
-                  </div>
-                  
-                  {sortedContacts.length === 0 ? (
-                    <div style={{ padding: '12px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
-                      {searchTerm ? 'No contacts match query' : (showArchivedOnly ? 'No archived chats' : 'No contacts added yet. Search a user to add them!')}
+          return (
+            <div
+              key={chat.id}
+              onClick={() => chat.type === 'group' ? handleRoomClick(chat) : setActiveChat({ id: chat.id, name: chat.name, type: 'direct' })}
+              onMouseEnter={() => setHoveredId(chat.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                transition: 'background-color var(--transition-fast)',
+                marginBottom: '4px',
+                border: isActive ? '1px solid var(--border-glass)' : '1px solid transparent'
+              }}
+              onMouseOver={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'var(--bg-panel)'; }}
+              onMouseOut={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  {chat.type === 'group' ? (
+                    <div className={`initials-avatar bg-av-5`} style={{ width: '44px', height: '44px', borderRadius: '50%', fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', justify: 'center', color: '#fff' }}>
+                      {chat.icon || '#'}
                     </div>
                   ) : (
-                    sortedContacts.map(u => {
-                      const isActive = activeChat && activeChat.type === 'direct' && activeChat.id === u.id;
-                      const unread = unreadCounts[u.id] || 0;
-                      const isTyping = (typingUsers[u.id] || []).length > 0;
-                      const isBlocked = user.blockedUsers?.includes(u.id);
-                      const isPinned = user.pinnedChats?.includes(u.id);
-                      const isMuted = user.mutedChats?.includes(u.id);
-                      const isArchived = user.archivedChats?.includes(u.id);
-                      const isHovered = hoveredId === u.id;
+                    renderAvatar(chat, '44px', '16px')
+                  )}
 
-                      // Last seen settings bypass check
-                      const showLastSeen = u.lastSeenSetting !== 'nobody';
-
-                      return (
-                        <div
-                          key={u.id}
-                          onClick={() => setActiveChat({ id: u.id, name: u.username, type: 'direct' })}
-                          onMouseEnter={() => setHoveredId(u.id)}
-                          onMouseLeave={() => setHoveredId(null)}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 12px',
-                            borderRadius: 'var(--radius-md)',
-                            cursor: 'pointer',
-                            backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                            transition: 'background-color var(--transition-fast)',
-                            marginBottom: '2px'
-                          }}
-                          onMouseOver={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'var(--border-glass)'; }}
-                          onMouseOut={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                              {renderAvatar(u, '42px', '16px')}
-                              {u.onlineVisibility !== 'invisible' && (
-                                <span style={{ position: 'absolute', bottom: 0, right: 0, width: '12px', height: '12px', borderRadius: '50%', backgroundColor: u.status === 'online' ? 'var(--success)' : 'var(--text-muted)', border: '2px solid var(--bg-app)' }} />
-                              )}
-                            </div>
-
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                                <h4 style={{
-                                  fontSize: '14px',
-                                  fontWeight: unread > 0 ? 700 : 600,
-                                  color: 'var(--text-primary)',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  margin: 0
-                                }}>
-                                  {u.username} {getFriendEmoji(u.username)}
-                                  {isPinned && <Pin size={11} style={{ color: 'var(--primary)' }} fill="var(--primary)" />}
-                                  {isMuted && <VolumeX size={11} style={{ color: 'var(--text-muted)' }} />}
-                                </h4>
-                                <span style={{ fontSize: '11px', color: '#ff9f43', display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-                                  <Flame size={12} fill="#ff9f43" stroke="none" /> {getStreak(u.username)}
-                                </span>
-                              </div>
-
-                              {isTyping ? (
-                                <span style={{ fontSize: '11px', color: 'var(--primary)', fontStyle: 'italic', display: 'block' }}>typing...</span>
-                              ) : (
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                                  {u.status === 'online' && u.onlineVisibility !== 'invisible' ? 'online' : (showLastSeen ? formatLastSeen(u.lastSeen) : 'offline')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
-                            {isHovered ? (
-                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => socket.emit('toggle_chat_status', { targetId: u.id, statusType: 'pin', active: !isPinned })}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isPinned ? 'var(--primary)' : 'var(--text-muted)', display: 'flex' }}
-                                  title={isPinned ? "Unpin Chat" : "Pin Chat"}
-                                >
-                                  <Pin size={13} fill={isPinned ? 'var(--primary)' : 'none'} />
-                                </button>
-                                <button
-                                  onClick={() => socket.emit('toggle_chat_status', { targetId: u.id, statusType: 'mute', active: !isMuted })}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isMuted ? 'var(--danger)' : 'var(--text-muted)', display: 'flex' }}
-                                  title={isMuted ? "Unmute Notifications" : "Mute Notifications"}
-                                >
-                                  {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                                </button>
-                                <button
-                                  onClick={() => socket.emit('toggle_chat_status', { targetId: u.id, statusType: 'archive', active: !isArchived })}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isArchived ? 'var(--primary)' : 'var(--text-muted)', display: 'flex' }}
-                                  title={isArchived ? "Unarchive Chat" : "Archive Chat"}
-                                >
-                                  <Archive size={13} />
-                                </button>
-                              </div>
-                            ) : (
-                              unread > 0 && (
-                                <span style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', fontSize: '10px', fontWeight: 700, borderRadius: '12px', minWidth: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>
-                                  {unread}
-                                </span>
-                              )
-                            )}
-                            {isBlocked && !isHovered && <ShieldAlert size={12} style={{ color: 'var(--danger)' }} />}
-                          </div>
-                        </div>
-                      );
-                    })
+                  {chat.type === 'direct' && chat.onlineVisibility !== 'invisible' && (
+                    <span style={{ position: 'absolute', bottom: '1px', right: '1px', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: chat.status === 'online' ? 'var(--success)' : '#7ab3d1', border: '2px solid var(--bg-sidebar)' }} />
                   )}
                 </div>
 
-                {/* Find Contacts (Global Search) */}
-                {searchTerm.trim().length > 0 && (
-                  <div>
-                    <h3 style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 12px', letterSpacing: '0.05em' }}>
-                      Find Contacts ({discoverUsers.length})
-                    </h3>
-                    {discoverUsers.length === 0 ? (
-                      <div style={{ padding: '12px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>No users found matching "{searchTerm}"</div>
-                    ) : (
-                      discoverUsers.map(u => {
-                        const hasSent = (user.sentRequests || []).includes(u.id);
-                        const hasReceived = (user.receivedRequests || []).includes(u.id);
-
-                        return (
-                          <div
-                            key={u.id}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '10px 12px',
-                              borderRadius: 'var(--radius-md)',
-                              marginBottom: '4px',
-                              backgroundColor: 'var(--bg-panel)',
-                              border: '1px solid var(--border-glass)'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                              {renderAvatar(u, '36px', '14px')}
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</h4>
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>{u.statusMsg || 'Hey there!'}</span>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              {hasSent ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sent</span>
-                                  <button
-                                    onClick={() => socket.emit('cancel_contact_request', { userId: user.id, targetUserId: u.id })}
-                                    style={{
-                                      backgroundColor: 'transparent',
-                                      color: 'var(--danger)',
-                                      border: 'none',
-                                      cursor: 'pointer',
-                                      fontSize: '11px',
-                                      padding: '4px',
-                                      display: 'flex',
-                                      alignItems: 'center'
-                                    }}
-                                    title="Cancel Request"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              ) : hasReceived ? (
-                                <button
-                                  onClick={() => socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id })}
-                                  style={{
-                                    backgroundColor: 'var(--primary)',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  Accept
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => socket.emit('send_contact_request', { senderId: user.id, targetUserId: u.id })}
-                                  style={{
-                                    backgroundColor: 'transparent',
-                                    color: 'var(--primary)',
-                                    border: '1px solid var(--primary)',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '2px'
-                                  }}
-                                >
-                                  <UserPlus size={12} /> Add
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', gap: '4px' }}>
+                    <h4 style={{
+                      fontSize: '14.5px',
+                      fontWeight: chat.unread > 0 ? 800 : 600,
+                      color: 'var(--text-primary)',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      {chat.name}
+                      {chat.type === 'direct' && getFriendEmoji(chat.username)}
+                      {chat.isPrivate && <Lock size={12} style={{ color: 'var(--warning)', marginLeft: '2px' }} />}
+                      {isPinned && <Pin size={11} style={{ color: 'var(--primary)' }} fill="var(--primary)" />}
+                      {isMuted && <VolumeX size={11} style={{ color: 'var(--text-muted)' }} />}
+                    </h4>
+                    
+                    {chat.lastMessage && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>
+                        {formatMessageTime(chat.lastMessage.timestamp)}
+                      </span>
                     )}
                   </div>
-                )}
-              </>
-            )}
 
-            {/* Starred Messages view */}
-            {activeTab === 'starred' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', padding: '8px 12px', textTransform: 'uppercase' }}>Starred Messages ({starredMessagesList.length})</span>
-                
-                {starredMessagesList.length === 0 ? (
-                  <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    No starred messages yet. Star messages inside chat area to bookmark them here.
-                  </div>
-                ) : (
-                  starredMessagesList.map(msg => (
-                    <div
-                      key={msg.id}
-                      style={{
-                        padding: '12px',
-                        borderRadius: 'var(--radius-md)',
-                        backgroundColor: 'var(--bg-panel)',
-                        border: '1px solid var(--border-glass)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px'
-                      }}
+                  <p style={{
+                    fontSize: '12.5px',
+                    color: isTyping ? 'var(--primary)' : (chat.unread > 0 ? 'var(--text-primary)' : 'var(--text-muted)'),
+                    margin: '3px 0 0 0',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    fontStyle: isTyping ? 'italic' : 'normal',
+                    fontWeight: chat.unread > 0 ? 700 : 400
+                  }}>
+                    {previewText}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '12px' }}>
+                {isHovered ? (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => socket.emit('toggle_chat_status', { targetId: chat.id, statusType: 'pin', active: !isPinned })}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isPinned ? 'var(--primary)' : 'var(--text-muted)', display: 'flex' }}
+                      title={isPinned ? "Unpin Chat" : "Pin Chat"}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
-                          {msg.senderId === user.id ? 'You' : (onlineUsers.find(u => u.id === msg.senderId)?.username || 'User')}
-                        </span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: '13px', color: 'var(--text-primary)', wordBreak: 'break-word' }}>
-                        {msg.text || '📁 Media file'}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            {/* Productivity tab panel (Notes & Tasks sync) */}
-            {activeTab === 'productivity' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '10px 4px' }}>
-                {activeRoomObj ? (
-                  <>
-                    {/* Collaborative Notepad section */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <PenTool size={12} /> Room Notes (Notepad)
-                      </span>
-                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '-4px' }}>Collaborative raw editor. Synced in real-time.</p>
-                      <textarea
-                        value={activeRoomNotes}
-                        onChange={handleNotesChange}
-                        placeholder="Type collaborative notes here... Everyone in this channel can see changes instantly."
-                        rows={6}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-glass)',
-                          background: 'var(--bg-panel)',
-                          color: 'var(--text-primary)',
-                          outline: 'none',
-                          fontSize: '13px',
-                          resize: 'none',
-                          lineHeight: '1.4'
-                        }}
-                      />
-                    </div>
-
-                    {/* Shared Tasks management list */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--border-glass)', paddingTop: '20px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <ClipboardList size={12} /> Room Task List ({activeRoomTasks.length})
-                      </span>
-                      
-                      {/* Add Task form */}
-                      <form onSubmit={handleAddTask} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <input
-                          type="text"
-                          placeholder="Task name..."
-                          value={taskNameInput}
-                          onChange={(e) => setTaskNameInput(e.target.value)}
-                          required
-                          style={{
-                            padding: '8px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-glass)',
-                            background: 'var(--bg-panel)',
-                            color: 'var(--text-primary)',
-                            outline: 'none',
-                            fontSize: '12px'
-                          }}
-                        />
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <select
-                            value={taskAssigneeId}
-                            onChange={(e) => setTaskAssigneeId(e.target.value)}
-                            style={{
-                              flex: 1,
-                              padding: '8px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border-glass)',
-                              background: 'var(--bg-panel)',
-                              color: 'var(--text-primary)',
-                              fontSize: '12px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <option value="">Assign To...</option>
-                            {onlineUsers.filter(u => activeRoomMembers.includes(u.id)).map(u => (
-                              <option key={u.id} value={u.id}>{u.username}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="submit"
-                            style={{
-                              backgroundColor: 'var(--primary)',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '6px',
-                              padding: '8px 14px',
-                              fontWeight: 600,
-                              fontSize: '12px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </form>
-
-                      {/* Tasks items list */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                        {activeRoomTasks.length === 0 ? (
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>No tasks assigned.</span>
-                        ) : (
-                          activeRoomTasks.map(tsk => {
-                            const assignee = onlineUsers.find(u => u.id === tsk.assigneeId);
-                            const name = assignee ? assignee.username : 'User';
-                            return (
-                              <div
-                                key={tsk.id}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  padding: '8px 10px',
-                                  borderRadius: '6px',
-                                  backgroundColor: 'var(--bg-panel)',
-                                  border: '1px solid var(--border-glass)'
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={tsk.completed}
-                                    onChange={() => handleToggleTask(tsk.id, tsk.completed)}
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                  <div style={{ minWidth: 0 }}>
-                                    <span style={{
-                                      fontSize: '12px',
-                                      color: 'var(--text-primary)',
-                                      textDecoration: tsk.completed ? 'line-through' : 'none',
-                                      fontWeight: 500,
-                                      display: 'block',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis'
-                                    }}>{tsk.name}</span>
-                                    <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Assignee: {name}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    Select an active public or private Group Room to inspect collaborative notes and shared tasks.
+                      <Pin size={13} fill={isPinned ? 'var(--primary)' : 'none'} />
+                    </button>
+                    <button
+                      onClick={() => socket.emit('toggle_chat_status', { targetId: chat.id, statusType: 'mute', active: !isMuted })}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isMuted ? 'var(--danger)' : 'var(--text-muted)', display: 'flex' }}
+                      title={isMuted ? "Unmute Notifications" : "Mute Notifications"}
+                    >
+                      {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    </button>
+                    <button
+                      onClick={() => socket.emit('toggle_chat_status', { targetId: chat.id, statusType: 'archive', active: !isArchived })}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: isArchived ? 'var(--primary)' : 'var(--text-muted)', display: 'flex' }}
+                      title={isArchived ? "Unarchive Chat" : "Archive Chat"}
+                    >
+                      <Archive size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleClearActiveChat(chat)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--danger)', display: 'flex' }}
+                      title="Clear History"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
+                ) : (
+                  <>
+                    {chat.unread > 0 && (
+                      <span style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', fontSize: '10px', fontWeight: 800, borderRadius: '10px', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                        {chat.unread}
+                      </span>
+                    )}
+                    {chat.type === 'direct' && (
+                      <span style={{ fontSize: '11px', color: '#ff9f43', display: 'flex', alignItems: 'center', gap: '1px', flexShrink: 0 }}>
+                        <Flame size={11} fill="#ff9f43" stroke="none" />{getStreak(chat.username)}
+                      </span>
+                    )}
+                  </>
                 )}
+                {isBlocked && !isHovered && <ShieldAlert size={12} style={{ color: 'var(--danger)' }} />}
               </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      backgroundColor: 'var(--bg-sidebar)',
+      minWidth: 0,
+      position: 'relative'
+    }}>
+      {/* A. Header Bar */}
+      <div style={{
+        padding: '16px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid var(--border-glass)',
+        backgroundColor: 'var(--bg-panel)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            boxShadow: '0 4px 10px rgba(0, 168, 132, 0.3)'
+          }}>
+            <MessageSquare size={18} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 850, fontFamily: 'Outfit, sans-serif', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+              CyberChat
+            </h2>
+            <span style={{ fontSize: '10px', color: connected ? 'var(--success)' : 'var(--warning)', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700 }}>
+              <Circle size={6} fill={connected ? 'var(--success)' : 'var(--warning)'} stroke="none" />
+              {connected ? 'Standing Node' : 'Sync Offline'}
+            </span>
+          </div>
+        </div>
+
+        {/* Menu Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* New Chat Button */}
+          <button
+            onClick={() => setShowNewChatModal(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '6px', display: 'flex', borderRadius: '50%', transition: 'background 0.2s' }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            title="Start New Chat"
+          >
+            <Plus size={20} />
+          </button>
+
+          {/* Notifications Button */}
+          <button
+            onClick={() => setShowNotifications(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '6px', display: 'flex', borderRadius: '50%', transition: 'background 0.2s', position: 'relative' }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            title="Notifications Alert"
+          >
+            <Bell size={18} />
+            <span style={{ position: 'absolute', top: '5px', right: '5px', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--danger)' }} />
+          </button>
+
+          <button
+            onClick={() => setShowSnapMap(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '6px', display: 'flex', borderRadius: '50%', transition: 'background 0.2s' }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            title="Snap Map Grid"
+          >
+            <Map size={18} />
+          </button>
+          
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowThreeDotMenu(!showThreeDotMenu)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                padding: '6px',
+                borderRadius: '50%',
+                transition: 'background-color var(--transition-fast)'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              title="Menu Options"
+            >
+              <MoreHorizontal size={20} />
+            </button>
+
+            {showThreeDotMenu && (
+              <>
+                <div 
+                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
+                  onClick={() => setShowThreeDotMenu(false)}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: '36px',
+                  right: '0',
+                  backgroundColor: 'var(--bg-panel)',
+                  border: '1px solid var(--border-glass)',
+                  borderRadius: '8px',
+                  boxShadow: 'var(--shadow-md)',
+                  zIndex: 100,
+                  width: '200px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '8px',
+                  textAlign: 'left'
+                }}>
+                  <button
+                    onClick={() => { setShowThreeDotMenu(false); setShowMyProfileModal(true); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <User size={16} />
+                    My Profile Info
+                  </button>
+
+                  <button
+                    onClick={() => { setSoundEnabled(!soundEnabled); setShowThreeDotMenu(false); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                    {soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}
+                  </button>
+
+                  <button
+                    onClick={() => { requestNotificationPermission(); setShowThreeDotMenu(false); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: notificationsPermission === 'granted' ? 'var(--primary)' : 'var(--text-secondary)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    {notificationsPermission === 'granted' ? <Bell size={16} /> : <BellOff size={16} />}
+                    Alert Permission
+                  </button>
+
+                  <button
+                    onClick={() => { logout(); setShowThreeDotMenu(false); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '13px', borderRadius: '4px', textAlign: 'left', width: '100%', marginTop: '4px', borderTop: '1px solid var(--border-glass)' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <LogOut size={16} />
+                    Logout Node
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
+      </div>
+
+      {/* B. Connection warning banner */}
+      {!connected && (
+        <div style={{
+          backgroundColor: 'var(--warning)',
+          color: '#111b21',
+          padding: '6px 16px',
+          fontSize: '11px',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px'
+        }}>
+          <RefreshCw size={12} className="spin" />
+          Network sync interrupted...
+        </div>
       )}
 
-      {/* Edit own profile modal overlay */}
+      {/* C. Ambient sound player */}
+      <AmbientAudioWidget showToast={showToast} />
+
+      {/* D. Search and filters */}
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'var(--bg-panel)', borderBottom: '1px solid var(--border-glass)' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+          <input
+            type="text"
+            placeholder="Search conversations, rooms..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 14px 10px 36px',
+              borderRadius: 'var(--radius-md)',
+              border: '1.5px solid var(--border-glass)',
+              backgroundColor: 'var(--bg-app)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              fontSize: '13px',
+              transition: 'border-color 0.2s'
+            }}
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Filter chips bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '2px' }}>
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'direct', label: 'Personal' },
+            { id: 'group', label: 'Groups' }
+          ].map(chip => (
+            <button
+              key={chip.id}
+              onClick={() => setActiveFilter(chip.id)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '16px',
+                border: 'none',
+                backgroundColor: activeFilter === chip.id ? 'var(--primary)' : 'var(--bg-app)',
+                color: activeFilter === chip.id ? 'var(--text-on-primary)' : 'var(--text-secondary)',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
+
+          {/* Archived switch toggle */}
+          <button
+            onClick={() => setShowArchivedOnly(!showArchivedOnly)}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: 'none',
+              color: showArchivedOnly ? 'var(--primary)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              fontWeight: 700
+            }}
+          >
+            <Archive size={14} />
+            <span>{showArchivedOnly ? 'Archived' : 'Active'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* E. Scrollable List of Chats */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '8px 8px 80px 8px' // Bottom padding to prevent FAB overlap
+      }}>
+        {/* Incoming Contact Requests */}
+        {incomingRequestsList.length > 0 && !showArchivedOnly && (
+          <div style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-glass)', paddingBottom: '12px' }}>
+            <h3 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '6px 12px', letterSpacing: '0.05em', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Bell size={12} style={{ color: 'var(--primary)' }} /> Contact Requests ({incomingRequestsList.length})
+            </h3>
+            {incomingRequestsList.map(u => (
+              <div
+                key={u.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--primary-light)',
+                  border: '1px solid var(--border-glass)',
+                  marginTop: '6px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                  {renderAvatar(u, '32px', '13px')}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</h4>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>wants to add you</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id })}
+                    style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => socket.emit('decline_contact_request', { userId: user.id, targetUserId: u.id })}
+                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Ignore
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Chats List Render */}
+        {conversations.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <MessageCircle size={40} opacity={0.2} style={{ margin: '0 auto 12px auto' }} />
+            <div style={{ fontSize: '14px', fontWeight: 600 }}>No conversations found</div>
+            <p style={{ fontSize: '12px', marginTop: '4px' }}>
+              {searchTerm ? 'Try checking your search parameters' : 'Start a chat by searching contacts or clicking the + button'}
+            </p>
+          </div>
+        ) : (
+          <>
+            {renderChatSection(pinnedChats, '📌 Pinned Chats')}
+            {renderChatSection(unreadChats, '✉️ Unread Chats')}
+            {renderChatSection(recentChats, '💬 Recent Chats')}
+          </>
+        )}
+
+        {/* Global Contacts Discovery on active search */}
+        {searchTerm.trim().length > 0 && (
+          <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
+            <h3 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 10px 12px', letterSpacing: '0.05em', margin: 0 }}>
+              Global Network Finder ({discoverUsers.length})
+            </h3>
+            {discoverUsers.length === 0 ? (
+              <div style={{ padding: '12px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>No users matching "{searchTerm}"</div>
+            ) : (
+              discoverUsers.map(u => {
+                const hasSent = (user.sentRequests || []).includes(u.id);
+                const hasReceived = (user.receivedRequests || []).includes(u.id);
+
+                return (
+                  <div
+                    key={u.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      marginBottom: '6px',
+                      backgroundColor: 'var(--bg-panel)',
+                      border: '1px solid var(--border-glass)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                      {renderAvatar(u, '36px', '14px')}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <h4 style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>{u.username}</h4>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>{u.statusMsg || 'Hey there!'}</span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      {hasSent ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Request Sent</span>
+                          <button
+                            onClick={() => socket.emit('cancel_contact_request', { userId: user.id, targetUserId: u.id })}
+                            style={{ backgroundColor: 'transparent', color: 'var(--danger)', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                            title="Cancel Request"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : hasReceived ? (
+                        <button
+                          onClick={() => socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id })}
+                          style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          Accept
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => socket.emit('send_contact_request', { senderId: user.id, targetUserId: u.id })}
+                          style={{
+                            backgroundColor: 'transparent',
+                            color: 'var(--primary)',
+                            border: '1.5px solid var(--primary)',
+                            borderRadius: '6px',
+                            padding: '5px 10px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* F. Modals Overlay */}
       {showMyProfileModal && (
         <MyProfileModal
           user={user}
@@ -1246,7 +896,6 @@ function Sidebar({
         />
       )}
 
-      {/* Snap Map Modal Overlay */}
       {showSnapMap && (
         <SnapMapModal
           user={user}
@@ -1255,13 +904,112 @@ function Sidebar({
           showToast={showToast}
         />
       )}
+
+      {showNotifications && (
+        <NotificationCenter
+          socket={socket}
+          currentUser={user}
+          apiBase={BACKEND_URL}
+          onClose={() => setShowNotifications(false)}
+        />
+      )}
+
+      {/* Passcode Modal Overlay for private rooms */}
+      {promptRoomId !== null && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(5, 10, 14, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-panel)',
+            border: '1.5px solid var(--border-glass)',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '320px',
+            boxShadow: 'var(--shadow-lg)'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Lock size={18} style={{ color: 'var(--warning)' }} /> Private Room Lock
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 16px 0' }}>
+              Enter passcode to join group conversation securely.
+            </p>
+            <form onSubmit={handlePasscodeSubmit}>
+              <input
+                type="password"
+                placeholder="Passcode..."
+                value={enteredPasscode}
+                onChange={e => setEnteredPasscode(e.target.value)}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1.5px solid var(--border-glass)',
+                  backgroundColor: 'var(--bg-app)',
+                  color: 'var(--text-primary)',
+                  fontSize: '14px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {passcodeError && (
+                <div style={{ fontSize: '11px', color: 'var(--danger)', marginTop: '6px', fontWeight: 600 }}>{passcodeError}</div>
+              )}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPromptRoomId(null)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-glass)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--text-on-primary)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Unlock
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function AmbientAudioWidget({ showToast }) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [selectedSound, setSelectedSound] = useState('drone'); // drone, chords, rain
+  const [selectedSound, setSelectedSound] = useState('drone'); 
   const audioCtxRef = React.useRef(null);
   const sourcesRef = React.useRef([]);
 
@@ -1281,87 +1029,53 @@ function AmbientAudioWidget({ showToast }) {
 
   const startAudio = () => {
     stopAudio();
-    
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
     
     const ctx = new AudioContext();
     audioCtxRef.current = ctx;
-
     const sources = [];
 
     if (selectedSound === 'drone') {
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gainNode = ctx.createGain();
-      
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = 55;
-      osc2.type = 'sine';
-      osc2.frequency.value = 110;
-
+      osc1.type = 'sawtooth'; osc1.frequency.value = 55;
+      osc2.type = 'sine'; osc2.frequency.value = 110;
       const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 150;
-
+      filter.type = 'lowpass'; filter.frequency.value = 150;
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.15;
-      lfoGain.gain.value = 40;
-      
-      lfo.connect(lfoGain);
-      lfoGain.connect(filter.frequency);
-
-      osc1.connect(filter);
-      osc2.connect(filter);
-      filter.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
+      lfo.frequency.value = 0.15; lfoGain.gain.value = 40;
+      lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
+      osc1.connect(filter); osc2.connect(filter);
+      filter.connect(gainNode); gainNode.connect(ctx.destination);
       gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 2.0);
-
-      osc1.start();
-      osc2.start();
-      lfo.start();
-
+      gainNode.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 2.0);
+      osc1.start(); osc2.start(); lfo.start();
       sources.push(osc1, osc2, lfo);
     } 
     else if (selectedSound === 'chords') {
       const frequencies = [130.81, 196.00, 261.63, 329.63, 493.88];
       const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 350;
-
+      filter.type = 'lowpass'; filter.frequency.value = 350;
       const mainGain = ctx.createGain();
       mainGain.connect(ctx.destination);
       mainGain.gain.setValueAtTime(0, ctx.currentTime);
-      mainGain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 3.0);
-
+      mainGain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 3.0);
       frequencies.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
         const oscGain = ctx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-
+        osc.type = 'sine'; osc.frequency.value = freq;
         const oscLfo = ctx.createOscillator();
         const oscLfoGain = ctx.createGain();
-        oscLfo.frequency.value = 0.05 + idx * 0.02;
-        oscLfoGain.gain.value = 0.25;
-
-        oscLfo.connect(oscLfoGain);
-        oscLfoGain.connect(oscGain.gain);
-
-        oscGain.gain.setValueAtTime(0.3, ctx.currentTime);
-
-        osc.connect(oscGain);
-        oscGain.connect(filter);
-
-        osc.start();
-        oscLfo.start();
+        oscLfo.frequency.value = 0.05 + idx * 0.02; oscLfoGain.gain.value = 0.25;
+        oscLfo.connect(oscLfoGain); oscLfoGain.connect(oscGain.gain);
+        oscGain.gain.setValueAtTime(0.2, ctx.currentTime);
+        osc.connect(oscGain); oscGain.connect(filter);
+        osc.start(); oscLfo.start();
         sources.push(osc, oscLfo);
       });
-
       filter.connect(mainGain);
       sources.push(mainGain);
     } 
@@ -1370,44 +1084,27 @@ function AmbientAudioWidget({ showToast }) {
       const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const output = noiseBuffer.getChannelData(0);
       let lastOut = 0.0;
-      
       for (let i = 0; i < bufferSize; i++) {
         const white = Math.random() * 2 - 1;
         output[i] = (lastOut + (0.02 * white)) / 1.02;
         lastOut = output[i];
         output[i] *= 3.5;
       }
-
       const noiseNode = ctx.createBufferSource();
-      noiseNode.buffer = noiseBuffer;
-      noiseNode.loop = true;
-
+      noiseNode.buffer = noiseBuffer; noiseNode.loop = true;
       const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 350;
-
+      filter.type = 'lowpass'; filter.frequency.value = 350;
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.08;
-      lfoGain.gain.value = 80;
-
-      lfo.connect(lfoGain);
-      lfoGain.connect(filter.frequency);
-
+      lfo.frequency.value = 0.08; lfoGain.gain.value = 80;
+      lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
       const gainNode = ctx.createGain();
       gainNode.gain.setValueAtTime(0, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 2.0);
-
-      noiseNode.connect(filter);
-      filter.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      noiseNode.start();
-      lfo.start();
-
+      gainNode.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 2.0);
+      noiseNode.connect(filter); filter.connect(gainNode); gainNode.connect(ctx.destination);
+      noiseNode.start(); lfo.start();
       sources.push(noiseNode, lfo);
     }
-
     sourcesRef.current = sources;
     setIsPlaying(true);
   };
@@ -1418,54 +1115,49 @@ function AmbientAudioWidget({ showToast }) {
       showToast('Ambient Hum Muted', 'info');
     } else {
       startAudio();
-      showToast(`Playing ${selectedSound} hum`, 'success');
+      showToast(`Playing ${selectedSound} soundscape`, 'success');
     }
   };
 
   useEffect(() => {
-    if (isPlaying) {
-      startAudio();
-    }
+    if (isPlaying) startAudio();
   }, [selectedSound]);
 
-  useEffect(() => {
-    return () => {
-      stopAudio();
-    };
-  }, []);
+  useEffect(() => { return () => stopAudio(); }, []);
 
   return (
-    <div className={`ambient-audio-widget ${isPlaying ? 'playing' : ''}`}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Volume2 size={16} style={{ color: isPlaying ? 'var(--primary)' : 'var(--text-muted)' }} />
-          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>Ambient Soundscape</span>
-        </div>
-        <div className="ambient-waves">
-          <span className="ambient-bar" />
-          <span className="ambient-bar" />
-          <span className="ambient-bar" />
-          <span className="ambient-bar" />
-          <span className="ambient-bar" />
-        </div>
+    <div style={{
+      padding: '8px 16px',
+      margin: '6px 12px 12px 12px',
+      borderRadius: 'var(--radius-md)',
+      backgroundColor: 'var(--bg-panel)',
+      border: '1px solid var(--border-glass)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '8px',
+      boxShadow: 'var(--shadow-sm)'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Volume2 size={14} style={{ color: isPlaying ? 'var(--primary)' : 'var(--text-muted)' }} />
+        <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)' }}>Ambient Hum</span>
       </div>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
         <select 
           value={selectedSound} 
           onChange={(e) => setSelectedSound(e.target.value)}
           style={{
-            flex: 1,
             backgroundColor: 'var(--bg-app)',
             color: 'var(--text-primary)',
-            border: '1px solid var(--border-glass)',
+            border: '1.5px solid var(--border-glass)',
             borderRadius: '6px',
-            padding: '4px 8px',
+            padding: '3px 6px',
             fontSize: '11px',
             outline: 'none',
             cursor: 'pointer'
           }}
         >
-          <option value="drone">Cyberpunk Hum</option>
+          <option value="drone">Cyber Hum</option>
           <option value="chords">Space Chords</option>
           <option value="rain">Binaural Rain</option>
         </select>
@@ -1473,14 +1165,13 @@ function AmbientAudioWidget({ showToast }) {
           onClick={handleTogglePlay}
           style={{
             backgroundColor: isPlaying ? 'var(--danger)' : 'var(--primary)',
-            color: '#fff',
+            color: 'var(--text-on-primary)',
             border: 'none',
             borderRadius: '6px',
-            padding: '5px 12px',
+            padding: '4px 10px',
             fontSize: '11px',
             fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'background-color 0.2s'
+            cursor: 'pointer'
           }}
         >
           {isPlaying ? 'Mute' : 'Play'}

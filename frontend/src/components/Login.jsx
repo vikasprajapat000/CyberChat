@@ -86,7 +86,7 @@ function Login({ onLogin, theme, toggleTheme, showToast, onBack, initialTab = 'l
       const data = await res.json();
       if (res.ok) {
         showToast('QR Scan successful! Welcome back, Agent.', 'success');
-        onLogin(data.user, data.token, rememberMe);
+        onLogin(data.user, data.token, data.refreshToken, rememberMe);
         setShowQRScanner(false);
         return;
       }
@@ -121,7 +121,7 @@ function Login({ onLogin, theme, toggleTheme, showToast, onBack, initialTab = 'l
       }
 
       showToast('QR Scan successful! Welcome to CyberChat.', 'success');
-      onLogin(retryData.user, retryData.token, rememberMe);
+      onLogin(retryData.user, retryData.token, retryData.refreshToken, rememberMe);
       setShowQRScanner(false);
     } catch (err) {
       showToast(err.message || 'QR Authentication failed.', 'error');
@@ -181,7 +181,7 @@ function Login({ onLogin, theme, toggleTheme, showToast, onBack, initialTab = 'l
       }
 
       showToast('Logged in successfully!', 'success');
-      onLogin(data.user, data.token, rememberMe);
+      onLogin(data.user, data.token, data.refreshToken, rememberMe);
     } catch (err) {
       setError(err.message || 'Server connection failed.');
     } finally {

@@ -305,4 +305,47 @@ router.post('/update-settings', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/users/devices — list active devices/sessions
+router.get('/devices', verifyToken, async (req, res) => {
+  try {
+    const { id, role } = req.user;
+    if (role !== 'user') return res.status(403).json({ error: 'Not allowed' });
+
+    const user = await User.findOne({ userId: id }).select('devices');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const activeSessions = (user.devices || []).map(d => ({
+      deviceId: d.deviceId,
+      deviceName: d.deviceName,
+      platform: d.platform,
+      lastActiveAt: d.lastActiveAt
+    }));
+
+    res.json({ success: true, devices: activeSessions });
+  } catch (error) {
+    console.error('Get Active Devices Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// DELETE /api/users/devices/:deviceId — revoke specific device session
+router.delete('/devices/:deviceId', verifyToken, async (req, res) => {
+  try {
+    const { id, role } = req.user;
+    if (role !== 'user') return res.status(403).json({ error: 'Not allowed' });
+
+    const deviceId = req.params.deviceId;
+    const user = await User.findOne({ userId: id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.devices = (user.devices || []).filter(d => d.deviceId !== deviceId);
+    await user.save();
+
+    res.json({ success: true, message: 'Device session revoked successfully.' });
+  } catch (error) {
+    console.error('Revoke Device Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 module.exports = { router, createNotification };

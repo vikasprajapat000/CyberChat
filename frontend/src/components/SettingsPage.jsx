@@ -3,10 +3,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   User, Palette, Eye, Download, Save, Moon, Sun, Check, Shield, 
   ArrowLeft, Trash2, Key, Phone, Mail, Lock, Volume2, Bell, 
-  Smartphone, HelpCircle, EyeOff, ShieldAlert, Monitor, Sparkles, 
-  MapPin, BadgeCheck, Camera, CheckSquare, EyeIcon, HelpCircle as HelpIcon,
-  ShieldCheck, RefreshCw, Zap
+  Smartphone, EyeOff, ShieldAlert, Monitor, Sparkles, 
+  MapPin, BadgeCheck, Camera, CheckSquare, HelpCircle,
+  ShieldCheck, RefreshCw, Zap, Database, ChevronRight, Info
 } from 'lucide-react';
+import StorageManager from './StorageManager';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
 
@@ -37,7 +38,7 @@ function SettingsPage({
   setActiveTab,
   isMobile
 }) {
-  const [activeSubTab, setActiveSubTab] = useState('profile');
+  const [activeSubTab, setActiveSubTab] = useState(null); // null = show categories list
 
   // Profile Upload States
   const [uploadingProfile, setUploadingProfile] = useState(false);
@@ -85,6 +86,11 @@ function SettingsPage({
   });
   const [autoDeleteTimer, setAutoDeleteTimer] = useState(user.disappearingMessageTimer || 0);
 
+  // Call Settings States (New integration)
+  const [videoResolution, setVideoResolution] = useState('720p');
+  const [echoCancellation, setEchoCancellation] = useState(true);
+  const [stunRelay, setStunRelay] = useState(false);
+
   // Notification States
   const [messageNotifications, setMessageNotifications] = useState(true);
   const [groupNotifications, setGroupNotifications] = useState(true);
@@ -94,7 +100,6 @@ function SettingsPage({
 
   // Security Lock States
   const [fingerprintEnabled, setFingerprintEnabled] = useState(user.fingerprintEnabled || false);
-  const [appLockEnabled, setAppLockEnabled] = useState(false);
   const [pinLockCode, setPinLockCode] = useState('');
   const [isAntiHackActive, setIsAntiHackActive] = useState(true);
 
@@ -103,7 +108,6 @@ function SettingsPage({
     return localStorage.getItem('cc_accent_color_id') || 'teal';
   });
 
-  // Initials Avatar Helpers
   const getInitials = (name) => {
     if (!name) return '?';
     const parts = name.trim().split(/\s+/);
@@ -114,14 +118,10 @@ function SettingsPage({
   const getAvatarBgClass = (name) => {
     if (!name) return 'bg-av-1';
     let code = 0;
-    for (let i = 0; i < name.length; i++) {
-      code += name.charCodeAt(i);
-    }
-    const idx = (code % 8) + 1;
-    return `bg-av-${idx}`;
+    for (let i = 0; i < name.length; i++) code += name.charCodeAt(i);
+    return `bg-av-${(code % 8) + 1}`;
   };
 
-  // Profile Upload Handler
   const handleProfilePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -137,21 +137,17 @@ function SettingsPage({
       const data = await res.json();
       if (data.success && data.profilePhoto) {
         showToast('Profile photo updated!', 'success');
-        // trigger local profile change via socket list update
         if (socket && connected) {
           socket.emit('edit_profile', { profilePhoto: data.profilePhoto });
         }
-      } else {
-        showToast(data.error || 'Upload failed', 'error');
       }
     } catch (err) {
-      showToast('Network error during photo upload', 'error');
+      showToast('Photo upload failed', 'error');
     } finally {
       setUploadingProfile(false);
     }
   };
 
-  // Cover Upload Handler
   const handleCoverPhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -170,17 +166,14 @@ function SettingsPage({
         if (socket && connected) {
           socket.emit('edit_profile', { coverPhoto: data.coverPhoto });
         }
-      } else {
-        showToast(data.error || 'Upload failed', 'error');
       }
     } catch (err) {
-      showToast('Network error during cover upload', 'error');
+      showToast('Cover upload failed', 'error');
     } finally {
       setUploadingCover(false);
     }
   };
 
-  // Save Configs
   const handleSettingsSave = (e) => {
     if (e) e.preventDefault();
     if (!connected || !socket) {
@@ -208,44 +201,31 @@ function SettingsPage({
       disappearingMessageTimer: autoDeleteTimer
     });
 
-    // Save Chat settings in localStorage
     localStorage.setItem('cc_chat_wallpaper', chatWallpaper);
     localStorage.setItem('cc_font_size', fontSize);
 
-    // Apply chat wallpaper CSS variable globally
     document.documentElement.setAttribute('data-chat-wallpaper', chatWallpaper);
     document.documentElement.setAttribute('data-chat-fontsize', fontSize);
 
-    showToast('Settings saved and synchronized globally!', 'success');
+    showToast('Settings saved & synchronized!', 'success');
   };
 
-  // Password update submit
   const handleChangePasswordSubmit = (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      showToast('New passwords do not match', 'warning');
+      showToast('Passwords do not match', 'warning');
       return;
     }
-    if (newPassword.length < 6) {
-      showToast('Password must be at least 6 characters', 'warning');
-      return;
-    }
-
     setChangingPass(true);
-    socket.emit('change_password', {
-      currentPassword,
-      newPassword
-    });
+    socket.emit('change_password', { currentPassword, newPassword });
   };
 
-  // Bind change password response
   useEffect(() => {
     if (!socket) return;
-    
     const handlePassChangeRes = (data) => {
       setChangingPass(false);
       if (data.success) {
-        showToast('Password updated successfully!', 'success');
+        showToast('Password updated!', 'success');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
@@ -253,65 +233,45 @@ function SettingsPage({
         showToast(data.error || 'Password update failed', 'error');
       }
     };
-
-    const handleDeleteAccRes = (data) => {
-      if (data.success) {
-        showToast('Account permanently erased. Redirecting...', 'warning');
-        setTimeout(() => {
-          localStorage.clear();
-          window.location.reload();
-        }, 1500);
-      } else {
-        showToast(data.error || 'Failed to delete account', 'error');
-      }
-    };
-
     socket.on('change_password_response', handlePassChangeRes);
-    socket.on('delete_account_response', handleDeleteAccRes);
-
-    return () => {
-      socket.off('change_password_response', handlePassChangeRes);
-      socket.off('delete_account_response', handleDeleteAccRes);
-    };
+    return () => socket.off('change_password_response', handlePassChangeRes);
   }, [socket]);
 
-  // Handle Account Deletion
-  const handleDeleteAccountSubmit = (e) => {
-    e.preventDefault();
-    if (!deleteConfirmPassword) return;
-    
-    socket.emit('delete_account', { password: deleteConfirmPassword });
-  };
-
-  // Aesthetic Accent color setter
   const handlePaletteApply = (palette) => {
     setActivePalette(palette.id);
     localStorage.setItem('cc_accent_color_id', palette.id);
-    
     document.documentElement.style.setProperty('--primary', palette.color);
     document.documentElement.style.setProperty('--primary-hover', palette.hover);
     document.documentElement.style.setProperty('--primary-light', palette.light);
-
-    showToast(`Accent palette changed to ${palette.name}`, 'success');
+    showToast(`Accent set to ${palette.name}`, 'success');
   };
 
-  // JSON backup exporter
   const handleBackupExport = () => {
     try {
       const dataStr = JSON.stringify(messages, null, 2);
       const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-      const exportFileDefaultName = `cyber_char_history_${user.username.replace(/\s+/g, '_').toLowerCase()}.json`;
-      
       const linkElement = document.createElement('a');
       linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.setAttribute('download', `cyberchat_history_${user.username}.json`);
       linkElement.click();
-      
-      showToast('Backup profile exported!', 'success');
-    } catch (err) {
+      showToast('Backup file exported!', 'success');
+    } catch {
       showToast('Export failed', 'error');
     }
   };
+
+  const sections = [
+    { id: 'account', name: 'Account details', icon: <User size={18} /> },
+    { id: 'privacy', name: 'Privacy shield', icon: <Eye size={18} /> },
+    { id: 'security', name: 'Security & App locks', icon: <Lock size={18} /> },
+    { id: 'devices', name: 'Linked devices & Sessions', icon: <Smartphone size={18} /> },
+    { id: 'notifications', name: 'Notification alerts', icon: <Bell size={18} /> },
+    { id: 'chats', name: 'Chat wallpapers & themes', icon: <Palette size={18} /> },
+    { id: 'calls', name: 'Voice & Video calls', icon: <Phone size={18} /> },
+    { id: 'premium', name: 'Premium access', icon: <Crown size={18} /> },
+    { id: 'storage', name: 'Storage & History backup', icon: <Database size={18} /> },
+    { id: 'about', name: 'About standing', icon: <Info size={18} /> }
+  ];
 
   return (
     <div style={{
@@ -319,307 +279,156 @@ function SettingsPage({
       flexDirection: 'column',
       height: '100%',
       backgroundColor: 'var(--bg-app)',
-      padding: isMobile ? '16px' : '32px',
+      padding: '16px',
       overflowY: 'auto'
     }}>
-      {/* Settings Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        {isMobile && (
+      {/* 1. Header with back button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+        {activeSubTab !== null ? (
+          <button 
+            onClick={() => setActiveSubTab(null)} 
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', padding: '6px' }}
+          >
+            <ArrowLeft size={22} />
+          </button>
+        ) : (
           <button 
             onClick={() => setActiveTab('chats')} 
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', padding: '8px', marginLeft: '-8px' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', padding: '6px' }}
           >
-            <ArrowLeft size={24} />
+            <ArrowLeft size={22} />
           </button>
         )}
-        <div style={{ backgroundColor: 'var(--primary)', color: '#fff', padding: '10px', borderRadius: '10px', boxShadow: '0 4px 12px var(--primary-light)' }}>
-          <Palette size={24} />
-        </div>
         <div>
-          <h2 style={{ fontSize: '24px', fontWeight: 800, fontFamily: 'Outfit', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            Cyber Center Settings 
-            {user.isVerified && <BadgeCheck size={18} style={{ color: 'var(--primary)' }} fill="rgba(0,0,0,0.1)" />}
+          <h2 style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'Outfit', color: 'var(--text-primary)' }}>
+            {activeSubTab ? `${activeSubTab.charAt(0).toUpperCase() + activeSubTab.slice(1)} Settings` : 'Settings'}
           </h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Configure and secure your node credentials, themes, privacy parameters, and custom audio locks.
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {activeSubTab ? 'Modify configurations below' : 'Select category to configure details'}
           </p>
         </div>
       </div>
 
-      {/* Main Tabs grid */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid var(--border-glass)',
-        gap: isMobile ? '12px' : '24px',
-        marginBottom: '24px',
-        flexWrap: 'wrap',
-        flexShrink: 0
-      }}>
-        {[
-          { id: 'profile', name: 'Profile ID', icon: <User size={16} /> },
-          { id: 'privacy', name: 'Privacy', icon: <Eye size={16} /> },
-          { id: 'chat', name: 'Chat Custom', icon: <Palette size={16} /> },
-          { id: 'notifications', name: 'Alerts', icon: <Bell size={16} /> },
-          { id: 'security', name: 'Security & App Lock', icon: <Lock size={16} /> },
-          { id: 'backup', name: 'Backup & Cloud', icon: <Download size={16} /> }
-        ].map(tb => (
-          <button
-            key={tb.id}
-            onClick={() => setActiveSubTab(tb.id)}
-            style={{
-              padding: '10px 4px',
-              border: 'none',
-              background: 'none',
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              color: activeSubTab === tb.id ? 'var(--primary)' : 'var(--text-secondary)',
-              borderBottom: activeSubTab === tb.id ? '2.5px solid var(--primary)' : '2.5px solid transparent',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            {tb.icon} {tb.name}
-          </button>
-        ))}
-      </div>
-
-      {/* Inner Panels */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: '640px' }}>
-        
-        {/* TAB 1: Profile & Identity */}
-        {activeSubTab === 'profile' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {/* Visual Header Banner for photo uploads */}
-            <div style={{
-              height: '140px',
-              width: '100%',
-              position: 'relative',
-              backgroundImage: user.coverPhoto ? `url(${BACKEND_URL}${user.coverPhoto})` : 'linear-gradient(135deg, rgba(0,168,132,0.2) 0%, rgba(59,130,246,0.1) 100%)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              borderRadius: '12px',
-              backgroundColor: '#0f172a',
-              border: '1px solid var(--border-glass)',
-              overflow: 'hidden'
-            }}>
-              {/* Change Cover */}
-              <label style={{
-                position: 'absolute',
-                bottom: '12px',
-                right: '12px',
-                backgroundColor: 'rgba(5, 10, 14, 0.75)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '6px',
-                padding: '6px 10px',
-                color: '#e2e8f0',
-                fontSize: '11px',
-                fontWeight: 700,
+      {/* 2. Main List or Active Category Sub Panel */}
+      {activeSubTab === null ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {sections.map(sec => (
+            <div
+              key={sec.id}
+              onClick={() => setActiveSubTab(sec.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                borderRadius: '12px',
+                backgroundColor: 'var(--bg-panel)',
+                border: '1px solid var(--border-glass)',
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <Camera size={13} />
-                {uploadingCover ? 'Syncing...' : 'Change Cover'}
-                <input type="file" ref={coverInputRef} onChange={handleCoverPhotoUpload} accept="image/*" style={{ display: 'none' }} />
-              </label>
-
-              {/* Overlapped profile avatar */}
+                transition: 'background var(--transition-fast)'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-light)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-panel)'}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-primary)' }}>
+                <div style={{ color: 'var(--primary)' }}>{sec.icon}</div>
+                <span style={{ fontSize: '14px', fontWeight: 600 }}>{sec.name}</span>
+              </div>
+              <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+          
+          {/* Account Sub-tab */}
+          {activeSubTab === 'account' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{
-                position: 'absolute',
-                bottom: '-20px',
-                left: '20px',
-                width: '80px',
-                height: '80px',
-                borderRadius: '50%',
-                border: '3px solid var(--bg-app)',
+                height: '100px',
+                width: '100%',
+                position: 'relative',
+                backgroundImage: user.coverPhoto ? `url(${BACKEND_URL}${user.coverPhoto})` : 'linear-gradient(135deg, rgba(0,168,132,0.2) 0%, rgba(59,130,246,0.1) 100%)',
+                backgroundSize: 'cover',
+                borderRadius: '12px',
+                backgroundColor: '#0f172a',
+                border: '1px solid var(--border-glass)',
                 overflow: 'hidden',
-                backgroundColor: '#1e293b',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: 'var(--shadow-md)'
+                alignItems: 'flex-end',
+                padding: '8px'
               }}>
-                {user.profilePhoto ? (
-                  <img src={`${BACKEND_URL}${user.profilePhoto}`} alt="User" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div className={`initials-avatar ${getAvatarBgClass(user.username)}`} style={{ width: '100%', height: '100%', fontSize: '28px' }}>
-                    {getInitials(user.username)}
-                  </div>
-                )}
-                <label style={{
-                  position: 'absolute',
-                  top: 0, left: 0, right: 0, bottom: 0,
-                  backgroundColor: 'rgba(5,10,14,0.6)',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: 0,
-                  transition: 'opacity 0.2s'
-                }}
-                className="profile-photo-hover-overlay"
-                onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
-                onMouseOut={(e) => e.currentTarget.style.opacity = '0'}
-                >
-                  <Camera size={16} />
-                  <input type="file" ref={profileInputRef} onChange={handleProfilePhotoUpload} accept="image/*" style={{ display: 'none' }} />
+                <label style={{ cursor: 'pointer', background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: '4px', color: '#fff', fontSize: '10px' }}>
+                  Edit Banner
+                  <input type="file" ref={coverInputRef} onChange={handleCoverPhotoUpload} accept="image/*" style={{ display: 'none' }} />
                 </label>
               </div>
-            </div>
-            <div style={{ height: '10px' }} />
 
-            {/* Profile fields form */}
-            <form onSubmit={handleSettingsSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Username</label>
+              <form onSubmit={handleSettingsSave} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={selectBoxContainer}>
+                  <label style={labelStyle}>Username</label>
                   <input type="text" value={username} onChange={e => setUsername(e.target.value)} required maxLength={20} style={inputStyle} />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Display Name</label>
-                  <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Node alias name" style={inputStyle} />
+                <div style={selectBoxContainer}>
+                  <label style={labelStyle}>Display Name</label>
+                  <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} style={inputStyle} />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Mobile Number</label>
-                  <input type="text" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} placeholder="+1 (555) 000-0000" style={inputStyle} />
+                <div style={selectBoxContainer}>
+                  <label style={labelStyle}>Mobile Number</label>
+                  <input type="text" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} style={inputStyle} />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Email Credentials</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="node@cyberchar.net" style={inputStyle} />
+                <div style={selectBoxContainer}>
+                  <label style={labelStyle}>Email</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
                 </div>
-              </div>
+                <div style={selectBoxContainer}>
+                  <label style={labelStyle}>Bio message</label>
+                  <textarea value={bio} onChange={e => setBio(e.target.value)} rows={2} style={inputStyle} />
+                </div>
+                <div style={selectBoxContainer}>
+                  <label style={labelStyle}>Status status</label>
+                  <input type="text" value={statusMsg} onChange={e => setStatusMsg(e.target.value)} style={inputStyle} />
+                </div>
+                <button type="submit" style={saveBtnStyle}><Save size={16} /> Save Changes</button>
+              </form>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Bio Info</label>
-                <textarea value={bio} onChange={e => setBio(e.target.value)} maxLength={120} rows={2} style={{ ...inputStyle, resize: 'none', fontFamily: 'inherit' }} />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Status Vibe</label>
-                <input type="text" value={statusMsg} onChange={e => setStatusMsg(e.target.value)} maxLength={30} style={inputStyle} />
-              </div>
-
-              <button type="submit" disabled={!connected} style={saveBtnStyle}>
-                <Save size={16} /> Save Identity Settings
-              </button>
-            </form>
-
-            {/* Change Password Block */}
-            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '20px', marginTop: '10px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Key size={16} style={{ color: 'var(--primary)' }} /> Modify Passcode
-              </h3>
-              <form onSubmit={handleChangePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '12px' }}>
+              <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px', marginTop: '10px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px' }}>Modify Password</h4>
+                <form onSubmit={handleChangePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <input type="password" placeholder="Current Password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required style={inputStyle} />
                   <input type="password" placeholder="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required style={inputStyle} />
-                  <input type="password" placeholder="Confirm Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required style={inputStyle} />
-                </div>
-                <button type="submit" disabled={changingPass || !connected} style={{ ...saveBtnStyle, backgroundColor: 'transparent', border: '1.5px solid var(--primary)', color: 'var(--primary)', boxShadow: 'none' }}>
-                  {changingPass ? 'Changing...' : 'Update Password'}
-                </button>
-              </form>
-            </div>
-
-            {/* Delete Account / Danger Zone */}
-            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '20px', marginTop: '10px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--danger)', marginBottom: '8px' }}>
-                ⚠️ Danger Zone
-              </h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                Permanently erase your credentials, direct chat logs, and hosted groups from the MongoDB database nodes.
-              </p>
-              
-              {!showDeleteConfirm ? (
-                <button type="button" onClick={() => setShowDeleteConfirm(true)} style={{ ...saveBtnStyle, backgroundColor: 'var(--danger)', color: '#fff', boxShadow: 'none', width: 'auto' }}>
-                  Delete CyberChar Account
-                </button>
-              ) : (
-                <form onSubmit={handleDeleteAccountSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: 'rgba(239,68,68,0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--danger)' }}>Confirm password to authorize deletion:</span>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <input type="password" placeholder="Confirm Password" value={deleteConfirmPassword} onChange={e => setDeleteConfirmPassword(e.target.value)} required style={{ ...inputStyle, borderColor: 'rgba(239,68,68,0.3)' }} />
-                    <button type="submit" style={{ ...saveBtnStyle, backgroundColor: 'var(--danger)', color: '#fff', width: 'auto', flexShrink: 0 }}>Authorize Erase</button>
-                    <button type="button" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmPassword(''); }} style={{ ...saveBtnStyle, backgroundColor: 'transparent', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', width: 'auto', flexShrink: 0 }}>Cancel</button>
-                  </div>
+                  <input type="password" placeholder="Confirm Pass" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required style={inputStyle} />
+                  <button type="submit" style={saveBtnStyle}>Change Pass</button>
                 </form>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: Privacy Controls */}
-        {activeSubTab === 'privacy' && (
-          <form onSubmit={handleSettingsSave} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Ghost Mode Toggle Banner */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '16px',
-              borderRadius: '10px',
-              backgroundColor: isGhostMode ? 'rgba(168, 85, 247, 0.1)' : 'var(--bg-panel)',
-              border: isGhostMode ? '1.5px solid #a855f7' : '1px solid var(--border-glass)',
-              transition: 'all 0.3s ease'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ color: isGhostMode ? '#a855f7' : 'var(--text-secondary)' }}>
-                  <Sparkles size={24} />
-                </div>
-                <div>
-                  <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>Ghost Mode / Invisible Mode</h4>
-                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Go anonymous: hides typing status, online indicator, seen receipts, and acts as offline.
-                  </p>
-                </div>
               </div>
-              <input 
-                type="checkbox" 
-                checked={isGhostMode} 
-                onChange={e => {
-                  setIsGhostMode(e.target.checked);
-                  if (e.target.checked) {
-                    setOnlineVisibility('invisible');
-                    setLastSeenSetting('nobody');
-                    setReadReceipts(false);
-                    setHideTyping(true);
-                    showToast('Ghost Mode initiated!', 'warning');
-                  } else {
-                    setOnlineVisibility('visible');
-                    setLastSeenSetting('everyone');
-                    setReadReceipts(true);
-                    setHideTyping(false);
-                  }
-                }} 
-                style={{ cursor: 'pointer', width: '20px', height: '20px', accentColor: '#a855f7' }}
-              />
             </div>
+          )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
-              {/* Last seen */}
+          {/* Privacy Sub-tab */}
+          {activeSubTab === 'privacy' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={toggleRowStyle}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>Ghost Mode</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Go completely anonymous on user lists</div>
+                </div>
+                <input type="checkbox" checked={isGhostMode} onChange={e => setIsGhostMode(e.target.checked)} style={checkboxStyle} />
+              </div>
               <div style={selectBoxContainer}>
-                <label style={labelStyle}>Last Seen Visibility</label>
+                <label style={labelStyle}>Last Seen Setting</label>
                 <select value={lastSeenSetting} onChange={e => setLastSeenSetting(e.target.value)} style={selectStyle}>
                   <option value="everyone">Everyone</option>
                   <option value="contacts">Contacts Only</option>
                   <option value="nobody">Nobody</option>
                 </select>
               </div>
-
-              {/* Online visibility */}
               <div style={selectBoxContainer}>
-                <label style={labelStyle}>Online Indicator Visibility</label>
+                <label style={labelStyle}>Online Visibility</label>
                 <select value={onlineVisibility} onChange={e => setOnlineVisibility(e.target.value)} style={selectStyle}>
                   <option value="visible">Visible</option>
-                  <option value="invisible">Invisible (Appear Offline)</option>
+                  <option value="invisible">Appear Offline</option>
                 </select>
               </div>
-
-              {/* Profile Photo Visibility */}
               <div style={selectBoxContainer}>
                 <label style={labelStyle}>Profile Photo Visibility</label>
                 <select value={profilePhotoVisibility} onChange={e => setProfilePhotoVisibility(e.target.value)} style={selectStyle}>
@@ -628,111 +437,73 @@ function SettingsPage({
                   <option value="nobody">Nobody</option>
                 </select>
               </div>
-
-              {/* About text visibility */}
-              <div style={selectBoxContainer}>
-                <label style={labelStyle}>About Bio Visibility</label>
-                <select value={aboutVisibility} onChange={e => setAboutVisibility(e.target.value)} style={selectStyle}>
-                  <option value="everyone">Everyone</option>
-                  <option value="contacts">Contacts Only</option>
-                  <option value="nobody">Nobody</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Privacy Toggles */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--border-glass)', paddingTop: '20px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Advanced Privacy Options</span>
-              
               <div style={toggleRowStyle}>
                 <span>Send Read Receipts (Seen ticks)</span>
                 <input type="checkbox" checked={readReceipts} onChange={e => setReadReceipts(e.target.checked)} style={checkboxStyle} />
               </div>
-
               <div style={toggleRowStyle}>
-                <span>Hide typing indicator to others</span>
+                <span>Hide typing indicator</span>
                 <input type="checkbox" checked={hideTyping} onChange={e => setHideTyping(e.target.checked)} style={checkboxStyle} />
               </div>
+              <button onClick={handleSettingsSave} style={saveBtnStyle}><Save size={16} /> Save Privacy</button>
+            </div>
+          )}
 
+          {/* Security Sub-tab */}
+          {activeSubTab === 'security' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={toggleRowStyle}>
-                <span>Hide microphone recording status</span>
-                <input type="checkbox" checked={hideRecording} onChange={e => setHideRecording(e.target.checked)} style={checkboxStyle} />
+                <span>Biometric / Fingerprint login</span>
+                <input type="checkbox" checked={fingerprintEnabled} onChange={e => setFingerprintEnabled(e.target.checked)} style={checkboxStyle} />
               </div>
-
+              <div style={selectBoxContainer}>
+                <label style={labelStyle}>Configure App Lock screen PIN</label>
+                <input type="password" maxLength={4} placeholder="Set 4 digit PIN" value={pinLockCode} onChange={e => setPinLockCode(e.target.value)} style={inputStyle} />
+                <button onClick={() => { localStorage.setItem('cc_screen_pin', pinLockCode); showToast('PIN established!', 'success'); }} style={saveBtnStyle}>Save PIN</button>
+              </div>
               <div style={toggleRowStyle}>
-                <span>Block screenshot warnings alerts</span>
-                <input type="checkbox" checked={hideScreenshot} onChange={e => setHideScreenshot(e.target.checked)} style={checkboxStyle} />
+                <span>Enable Real-time Intrusion Shield</span>
+                <input type="checkbox" checked={isAntiHackActive} onChange={e => setIsAntiHackActive(e.target.checked)} style={checkboxStyle} />
               </div>
             </div>
+          )}
 
-            <button type="submit" disabled={!connected} style={saveBtnStyle}>
-              <Save size={16} /> Save Privacy Settings
-            </button>
-          </form>
-        )}
+          {/* Linked Devices Sub-tab */}
+          {activeSubTab === 'devices' && (
+            <DevicesSection showToast={showToast} token={token} />
+          )}
 
-        {/* TAB 3: Chat Customizations */}
-        {activeSubTab === 'chat' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Theme switcher */}
-            <div>
-              <span style={labelStyle}>Workspace Color Accent Theme</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                {PALETTE_OPTIONS.map(opt => (
-                  <div
-                    key={opt.id}
-                    onClick={() => handlePaletteApply(opt)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      border: activePalette === opt.id ? '1.5px solid var(--primary)' : '1px solid var(--border-glass)',
-                      backgroundColor: 'var(--bg-panel)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: opt.color }} />
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.name}</span>
-                    </div>
-                    {activePalette === opt.id && <Check size={14} style={{ color: 'var(--primary)' }} />}
-                  </div>
-                ))}
+          {/* Notifications Sub-tab */}
+          {activeSubTab === 'notifications' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={toggleRowStyle}>
+                <span>Enable Direct Message Notifications</span>
+                <input type="checkbox" checked={messageNotifications} onChange={e => setMessageNotifications(e.target.checked)} style={checkboxStyle} />
               </div>
+              <div style={toggleRowStyle}>
+                <span>Enable Group Room Notifications</span>
+                <input type="checkbox" checked={groupNotifications} onChange={e => setGroupNotifications(e.target.checked)} style={checkboxStyle} />
+              </div>
+              <div style={toggleRowStyle}>
+                <span>Sound Chime Vibration alerts</span>
+                <input type="checkbox" checked={vibrationEnabled} onChange={e => setVibrationEnabled(e.target.checked)} style={checkboxStyle} />
+              </div>
+              <div style={selectBoxContainer}>
+                <label style={labelStyle}>Notification Sound Chime</label>
+                <select value={soundSelection} onChange={e => setSoundSelection(e.target.value)} style={selectStyle}>
+                  <option value="chime">Digital Synth Chime</option>
+                  <option value="ping">Classic Cyber Ping</option>
+                  <option value="matrix">Matrix Synth Drop</option>
+                  <option value="silent">Silent</option>
+                </select>
+              </div>
+              <button onClick={() => showToast('Notifications applied!', 'success')} style={saveBtnStyle}>Save Notifications</button>
             </div>
+          )}
 
-            {/* Dark/Light mode button */}
-            <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
-              <span style={labelStyle}>System Dark / Light Base</span>
-              <button
-                onClick={toggleTheme}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-glass)',
-                  backgroundColor: 'var(--bg-panel)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  marginTop: '8px'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                  <span>Switch to {theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Wallpaper Selection */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
+          {/* Chats Sub-tab */}
+          {activeSubTab === 'chats' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div style={selectBoxContainer}>
                 <label style={labelStyle}>Chat Background Wallpaper</label>
                 <select value={chatWallpaper} onChange={e => { setChatWallpaper(e.target.value); localStorage.setItem('cc_chat_wallpaper', e.target.value); }} style={selectStyle}>
@@ -741,7 +512,6 @@ function SettingsPage({
                   ))}
                 </select>
               </div>
-
               <div style={selectBoxContainer}>
                 <label style={labelStyle}>Message Font Size</label>
                 <select value={fontSize} onChange={e => { setFontSize(e.target.value); localStorage.setItem('cc_font_size', e.target.value); }} style={selectStyle}>
@@ -751,179 +521,138 @@ function SettingsPage({
                   <option value="xlarge">Cyber Giant (18px)</option>
                 </select>
               </div>
-            </div>
-
-            {/* Auto Delete Default Messages */}
-            <div style={selectBoxContainer}>
-              <label style={labelStyle}>Default Message Auto-Delete Timer</label>
-              <select value={autoDeleteTimer} onChange={e => setAutoDeleteTimer(Number(e.target.value))} style={selectStyle}>
-                <option value={0}>Disabled</option>
-                <option value={10}>10 Seconds (Self-Destruct)</option>
-                <option value={60}>1 Minute</option>
-                <option value={3600}>1 Hour</option>
-                <option value={86400}>1 Day</option>
-              </select>
-            </div>
-
-            <button onClick={handleSettingsSave} style={saveBtnStyle}>
-              <Save size={16} /> Apply Chat Settings
-            </button>
-          </div>
-        )}
-
-        {/* TAB 4: Alerts & Notifications */}
-        {activeSubTab === 'notifications' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={toggleRowStyle}>
-                <span>Enable Direct Message Notifications</span>
-                <input type="checkbox" checked={messageNotifications} onChange={e => setMessageNotifications(e.target.checked)} style={checkboxStyle} />
+              <div style={selectBoxContainer}>
+                <label style={labelStyle}>Message auto-delete timer</label>
+                <select value={autoDeleteTimer} onChange={e => setAutoDeleteTimer(Number(e.target.value))} style={selectStyle}>
+                  <option value={0}>Disabled</option>
+                  <option value={10}>10 Seconds (Self-Destruct)</option>
+                  <option value={60}>1 Minute</option>
+                  <option value={3600}>1 Hour</option>
+                  <option value={86400}>1 Day</option>
+                </select>
               </div>
-
-              <div style={toggleRowStyle}>
-                <span>Enable Group Room Notifications</span>
-                <input type="checkbox" checked={groupNotifications} onChange={e => groupNotifications(e.target.checked)} style={checkboxStyle} />
-              </div>
-
-              <div style={toggleRowStyle}>
-                <span>Sound Vibration Alerts</span>
-                <input type="checkbox" checked={vibrationEnabled} onChange={e => setVibrationEnabled(e.target.checked)} style={checkboxStyle} />
-              </div>
-
-              <div style={toggleRowStyle}>
-                <span>Focus Mode / Silent Hours (DND)</span>
-                <input type="checkbox" checked={silentHours} onChange={e => setSilentHours(e.target.checked)} style={checkboxStyle} />
-              </div>
-            </div>
-
-            <div style={selectBoxContainer}>
-              <label style={labelStyle}>Notification Sound Chime Pack</label>
-              <select value={soundSelection} onChange={e => { setSoundSelection(e.target.value); showToast(`Sound choice set to ${e.target.value}`, 'success'); }} style={selectStyle}>
-                <option value="chime">Digital Synth Chime</option>
-                <option value="ping">Classic Cyber Ping</option>
-                <option value="matrix">Matrix Synth Drop</option>
-                <option value="silent">None (Silent)</option>
-              </select>
-            </div>
-
-            <button onClick={() => showToast('Notification settings applied!', 'success')} style={saveBtnStyle}>
-              <Save size={16} /> Save Notification Pack
-            </button>
-          </div>
-        )}
-
-        {/* TAB 5: Security Lock Panel */}
-        {activeSubTab === 'security' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Screen Lock Lock */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'rgba(0,168,132,0.03)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Smartphone size={20} style={{ color: 'var(--primary)' }} />
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>Fingerprint Unlock / Biometrics</h4>
-              </div>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Authorize WebAuthn browser credentials to unlock your CyberChar chat dashboard natively.
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', marginTop: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Enable Fingerprint Biometrics</span>
-                <input 
-                  type="checkbox" 
-                  checked={fingerprintEnabled} 
-                  onChange={e => {
-                    setFingerprintEnabled(e.target.checked);
-                    if (e.target.checked) {
-                      showToast('Authenticating with device biometrics...', 'info');
-                      setTimeout(() => showToast('Biometrics successfully registered!', 'success'), 1200);
-                    }
-                  }} 
-                  style={checkboxStyle} 
-                />
-              </div>
-            </div>
-
-            {/* App Lock PIN */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'var(--bg-panel)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Lock size={20} style={{ color: 'var(--primary)' }} />
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>App Pin Lock Protection</h4>
-              </div>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Set up a 4-digit holographic security lock to screen lock your client dashboard after 5 minutes of inactivity.
-              </p>
               
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px' }}>
-                <input 
-                  type="password" 
-                  maxLength={4} 
-                  placeholder="Set 4-Digit PIN" 
-                  value={pinLockCode} 
-                  onChange={e => setPinLockCode(e.target.value.replace(/\D/g, ''))} 
-                  style={{ ...inputStyle, width: '120px', letterSpacing: '8px', textAlign: 'center' }} 
-                />
-                <button 
-                  onClick={() => {
-                    if (pinLockCode.length === 4) {
-                      localStorage.setItem('cc_screen_pin', pinLockCode);
-                      showToast('Security PIN Lock established successfully!', 'success');
-                    } else {
-                      showToast('PIN must be exactly 4 digits', 'warning');
-                    }
+              <div>
+                <label style={labelStyle}>Workspace Color Accent Theme</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                  {PALETTE_OPTIONS.map(opt => (
+                    <div
+                      key={opt.id}
+                      onClick={() => handlePaletteApply(opt)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        border: activePalette === opt.id ? '1.5px solid var(--primary)' : '1px solid var(--border-glass)',
+                        backgroundColor: 'var(--bg-panel)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: opt.color }} />
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.name}</span>
+                      </div>
+                      {activePalette === opt.id && <Check size={14} style={{ color: 'var(--primary)' }} />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
+                <span style={labelStyle}>System Dark / Light Base</span>
+                <button
+                  onClick={toggleTheme}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)',
+                    backgroundColor: 'var(--bg-panel)', color: 'var(--text-primary)', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 600, fontSize: '13px', marginTop: '8px'
                   }}
-                  style={{ ...saveBtnStyle, width: 'auto' }}
                 >
-                  Configure PIN
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                    <span>Switch to {theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                  </div>
                 </button>
               </div>
-            </div>
 
-            {/* Anti Hack log */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'var(--bg-panel)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ShieldAlert size={20} style={{ color: 'var(--warning)' }} />
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>Anti-Hack Network Intrusion Detection</h4>
+              <button onClick={handleSettingsSave} style={saveBtnStyle}><Save size={16} /> Apply Chat Settings</button>
+            </div>
+          )}
+
+          {/* Calls Sub-tab (Optimized Call settings) */}
+          {activeSubTab === 'calls' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={selectBoxContainer}>
+                <label style={labelStyle}>Video Call Resolution</label>
+                <select value={videoResolution} onChange={e => { setVideoResolution(e.target.value); showToast(`Video calls set to ${e.target.value}`, 'success'); }} style={selectStyle}>
+                  <option value="360p">360p (Low bandwidth)</option>
+                  <option value="480p">480p (Standard)</option>
+                  <option value="720p">720p (High Definition)</option>
+                  <option value="1080p">1080p (Full HD - Elite subscription)</option>
+                </select>
               </div>
-              <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Our algorithms automatically detect token cloning, rapid IP shifts, or simulated bot traffic.
+              <div style={toggleRowStyle}>
+                <span>Enable Audio Echo Cancellation</span>
+                <input type="checkbox" checked={echoCancellation} onChange={e => { setEchoCancellation(e.target.checked); showToast(`Echo cancellation ${e.target.checked ? 'enabled' : 'disabled'}`, 'info'); }} style={checkboxStyle} />
+              </div>
+              <div style={toggleRowStyle}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>Enable STUN/TURN Relay Mode</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Helps bypass restrictive firewall networks</div>
+                </div>
+                <input type="checkbox" checked={stunRelay} onChange={e => { setStunRelay(e.target.checked); showToast(`STUN Relay mode ${e.target.checked ? 'activated' : 'deactivated'}`, 'warning'); }} style={checkboxStyle} />
+              </div>
+            </div>
+          )}
+
+          {/* Premium Sub-tab */}
+          {activeSubTab === 'premium' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: 'var(--bg-panel)', padding: '20px', borderRadius: '12px', border: '1.5px solid var(--border-glass)', textAlign: 'center' }}>
+              <Crown size={36} style={{ color: '#a855f7', margin: '0 auto' }} fill="#a855f7" />
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>You are on the {user.premiumTier?.toUpperCase() || 'FREE'} tier</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Unlock high-fidelity RTC channels, custom avatars, holographic borders, and unlimited AI assistant queries.
               </p>
-              <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', marginTop: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Enable Real-time Intrusion Shields</span>
-                <input type="checkbox" checked={isAntiHackActive} onChange={e => setIsAntiHackActive(e.target.checked)} style={checkboxStyle} />
+              <button onClick={() => setActiveTab('premium')} style={{ ...saveBtnStyle, backgroundColor: '#a855f7', color: '#fff', boxShadow: '0 4px 15px rgba(168, 85, 247, 0.3)' }}>
+                View Premium Plans
+              </button>
+            </div>
+          )}
+
+          {/* Storage Sub-tab */}
+          {activeSubTab === 'storage' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <StorageManager user={user} messages={messages} showToast={showToast} />
+              <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>History decryptions</h4>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handleBackupExport} style={saveBtnStyle}><Download size={16} /> Export raw JSON</button>
+                  <button onClick={() => { showToast('Syncing backup database...', 'info'); setTimeout(() => showToast('Cloud database synchronized!', 'success'), 1200); }} style={{ ...saveBtnStyle, backgroundColor: 'transparent', border: '1.5px solid var(--primary)', color: 'var(--primary)', boxShadow: 'none' }}><RefreshCw size={16} /> Sync Backup</button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB 6: Backups & System */}
-        {activeSubTab === 'backup' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: 'var(--bg-panel)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-            <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', fontFamily: 'Outfit' }}>
-              Secure Export & Cloud Backups
-            </span>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-              Export and download a structured decrypted backup profile copy of your chat history. The export contains all active room logs, messages, timestamps, and media references.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <button
-                onClick={handleBackupExport}
-                style={saveBtnStyle}
-              >
-                <Download size={16} /> Export raw-chat.json
-              </button>
-              
-              <button
-                onClick={() => {
-                  showToast('Syncing with remote backup server...', 'info');
-                  setTimeout(() => showToast('Cloud database synchronized successfully!', 'success'), 1500);
-                }}
-                style={{ ...saveBtnStyle, backgroundColor: 'transparent', border: '1.5px solid var(--primary)', color: 'var(--primary)', boxShadow: 'none' }}
-              >
-                <RefreshCw size={16} /> Trigger Cloud Backup Sync
-              </button>
+          {/* About Sub-tab */}
+          {activeSubTab === 'about' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: 'var(--bg-panel)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <div style={{ fontSize: '32px' }}>🛡️</div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '8px' }}>CyberChat Client Dashboard</h3>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Secure standing Node: v2.4.0-Release</span>
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div><strong>Host standing</strong>: Decrypted WebSocket pipelines</div>
+                <div><strong>Encryption</strong>: Bi-directional WebRTC / TLS</div>
+                <div><strong>Standing status</strong>: Fully functional</div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -937,7 +666,8 @@ const inputStyle = {
   color: 'var(--text-primary)',
   outline: 'none',
   fontSize: '13.5px',
-  transition: 'border-color 0.2s'
+  width: '100%',
+  boxSizing: 'border-box'
 };
 
 const saveBtnStyle = {
@@ -955,7 +685,8 @@ const saveBtnStyle = {
   justifyContent: 'center',
   gap: '8px',
   boxShadow: '0 4px 15px rgba(0, 168, 132, 0.25)',
-  transition: 'all 0.2s'
+  transition: 'all 0.2s',
+  boxSizing: 'border-box'
 };
 
 const selectBoxContainer = {
@@ -968,7 +699,8 @@ const labelStyle = {
   fontSize: '11px',
   fontWeight: 700,
   color: 'var(--text-secondary)',
-  textTransform: 'uppercase'
+  textTransform: 'uppercase',
+  textAlign: 'left'
 };
 
 const selectStyle = {
@@ -979,20 +711,21 @@ const selectStyle = {
   color: 'var(--text-primary)',
   outline: 'none',
   fontSize: '13.5px',
-  cursor: 'pointer'
+  cursor: 'pointer',
+  width: '100%'
 };
 
 const toggleRowStyle = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '10px 14px',
-  borderRadius: '8px',
+  padding: '14px 16px',
+  borderRadius: '12px',
   backgroundColor: 'var(--bg-panel)',
   border: '1px solid var(--border-glass)',
   fontSize: '13px',
   color: 'var(--text-primary)',
-  fontWeight: 500
+  fontWeight: 600
 };
 
 const checkboxStyle = {
@@ -1001,5 +734,121 @@ const checkboxStyle = {
   height: '18px',
   accentColor: 'var(--primary)'
 };
+
+function DevicesSection({ showToast, token }) {
+  const [devicesList, setDevicesList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchDevices = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/users/devices`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDevicesList(data.devices || []);
+      }
+    } catch (e) {
+      showToast('Failed to fetch devices', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDevices();
+  }, []);
+
+  const handleRevoke = async (deviceId) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/users/devices/${deviceId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Device session revoked successfully!', 'success');
+        fetchDevices();
+      } else {
+        showToast(data.error || 'Failed to revoke device', 'error');
+      }
+    } catch (e) {
+      showToast('Connection error during revocation', 'error');
+    }
+  };
+
+  if (loading) {
+    return <div style={{ color: 'var(--text-secondary)', padding: '20px', textAlign: 'center' }}>Syncing secure device nodes...</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', textAlign: 'left' }}>
+        Linked Active Sessions
+      </h3>
+      <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'left', lineHeight: '1.4' }}>
+        Linked web browser clients mapped to your encrypted node loop. You can terminate any unrecognized device session here.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+        {devicesList.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            No linked devices found.
+          </div>
+        ) : (
+          devicesList.map(dev => {
+            const dateStr = new Date(dev.lastActiveAt).toLocaleString();
+            return (
+              <div
+                key={dev.deviceId}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--bg-panel)',
+                  border: '1px solid var(--border-glass)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
+                  <div style={{ color: 'var(--primary)' }}>
+                    {dev.platform === 'Mobile' ? <Smartphone size={24} /> : <Monitor size={24} />}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {dev.deviceName}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Last active: {dateStr}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRevoke(dev.deviceId)}
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: 'var(--danger)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'var(--danger)'; e.currentTarget.style.color = '#fff'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.color = 'var(--danger)'; }}
+                >
+                  Terminate
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default SettingsPage;

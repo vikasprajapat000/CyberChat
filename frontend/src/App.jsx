@@ -6,9 +6,55 @@ import ChatLayout from './components/ChatLayout';
 import LandingPage from './components/LandingPage';
 import { ToastContainer } from './components/Toast';
 import { SOCKET_EVENTS } from '../../shared/constants.json';
-import { playNotificationSound } from './utils/audio';
+import { playNotificationSound, startIncomingRingtone, startOutgoingRingtone, stopRingtone } from './utils/audio';
 import CallModal from './components/CallModal';
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-d26c.onrender.com');
+
+// Global fetch interceptor to handle short-lived JWT access token auto-refresh transparently
+const originalFetch = window.fetch;
+window.fetch = async function (url, options) {
+  let res = await originalFetch(url, options);
+
+  // If token expired (401/403) and it is not a login or refresh request, perform refresh token exchange
+  if ((res.status === 401 || res.status === 403) && url && !url.includes('/api/auth/refresh') && !url.includes('/api/auth/login')) {
+    const refreshToken = localStorage.getItem('cc_refresh_token');
+    if (refreshToken) {
+      try {
+        const refreshRes = await originalFetch(`${BACKEND_URL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken })
+        });
+
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          if (data.success && data.accessToken) {
+            localStorage.setItem('cc_token', data.accessToken);
+            if (data.refreshToken) {
+              localStorage.setItem('cc_refresh_token', data.refreshToken);
+            }
+
+            // Clone options and replay original request with new access token
+            const newOptions = { ...options };
+            newOptions.headers = { ...newOptions.headers };
+            newOptions.headers['Authorization'] = `Bearer ${data.accessToken}`;
+
+            return await originalFetch(url, newOptions);
+          }
+        } else {
+          // If refresh token is expired or revoked, purge session
+          localStorage.removeItem('cc_user');
+          localStorage.removeItem('cc_token');
+          localStorage.removeItem('cc_refresh_token');
+          window.location.reload();
+        }
+      } catch (err) {
+        console.error('[CyberChat Interceptor] Token refresh error:', err);
+      }
+    }
+  }
+  return res;
+};
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -92,6 +138,12 @@ function App() {
   const [audioMuted, setAudioMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
+
+  // Audio/Video Device & Quality States
+  const [selectedAudioInput, setSelectedAudioInput] = useState('');
+  const [selectedVideoInput, setSelectedVideoInput] = useState('');
+  const [selectedAudioOutput, setSelectedAudioOutput] = useState('');
+  const [videoQuality, setVideoQuality] = useState('hd'); // 'hd' | 'sd' | 'low'
 
   // WebRTC Refs
   const pcRef = useRef(null);
@@ -224,6 +276,11 @@ function App() {
         [activeChat.id]: 0
       }));
 
+      // Request Direct Message history on-demand
+      if (activeChat.type === 'direct') {
+        socket.emit('get_dm_history', { targetUserId: activeChat.id });
+      }
+
       // Bulk seen receipt trigger: tell server we read all unread messages in this conversation
       const unseen = messages.filter(m => 
         m.senderId !== user?.id &&
@@ -299,6 +356,14 @@ function App() {
         });
       });
 
+      // Listen to DM history query on demand
+      activeSocket.on('dm_history', ({ targetUserId, messages: history }) => {
+        setMessages(prev => {
+          const otherMsgs = prev.filter(m => m.roomId || (m.senderId !== targetUserId && m.recipientId !== targetUserId));
+          return [...otherMsgs, ...history].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        });
+      });
+
       // Listen for global ban notification
       activeSocket.on('banned_notification', ({ reason }) => {
         showToast(reason, 'error');
@@ -332,6 +397,7 @@ function App() {
       return () => {
         clearInterval(interval);
         activeSocket.off('room_history');
+        activeSocket.off('dm_history');
         activeSocket.off('banned_notification');
         activeSocket.off('mute_status_update');
         activeSocket.off('kicked_from_room');
@@ -391,9 +457,24 @@ function App() {
     const handleReceiveMessage = (msg) => {
       if (user?.blockedUsers?.includes(msg.senderId)) return;
 
-      // Append message
+      // Append message or replace optimistic message matching content
       setMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev;
+
+        const optIdx = prev.findIndex(m =>
+          m.id?.startsWith('opt_') &&
+          m.text === msg.text &&
+          m.senderId === msg.senderId &&
+          m.roomId === msg.roomId &&
+          m.recipientId === msg.recipientId
+        );
+
+        if (optIdx !== -1) {
+          const updated = [...prev];
+          updated[optIdx] = msg;
+          return updated;
+        }
+
         return [...prev, msg];
       });
 
@@ -521,6 +602,7 @@ function App() {
       setIsVideoCall(isVideo);
       setActiveCallId(callId);
       incomingOfferRef.current = { from, offer, isVideo, callId };
+      startIncomingRingtone();
     };
 
     const handleCallAccepted = async ({ from, answer }) => {
@@ -685,16 +767,37 @@ function App() {
     };
   }, [socket, user, soundEnabled, onlineUsers, rooms]);
 
-  const handleLogin = (authenticatedUser, token, rememberMe) => {
+  const handleLogin = (authenticatedUser, token, refreshToken, rememberMe) => {
     setUser(authenticatedUser);
     localStorage.setItem('cc_user', JSON.stringify(authenticatedUser));
     localStorage.setItem('cc_token', token);
+    if (refreshToken) {
+      localStorage.setItem('cc_refresh_token', refreshToken);
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = localStorage.getItem('cc_token');
+    const refreshToken = localStorage.getItem('cc_refresh_token');
+    if (token) {
+      try {
+        await fetch(`${BACKEND_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ refreshToken })
+        });
+      } catch (e) {
+        console.warn('Logout API call failed:', e);
+      }
+    }
+
     disconnectSocket();
     localStorage.removeItem('cc_user');
     localStorage.removeItem('cc_token');
+    localStorage.removeItem('cc_refresh_token');
     setUser(null);
     setRooms([]);
     setMessages([]);
@@ -706,6 +809,7 @@ function App() {
   };
 
   const cleanupCall = () => {
+    stopRingtone();
     if (pcRef.current) {
       try {
         pcRef.current.close();
@@ -751,10 +855,22 @@ function App() {
     setIsSharingScreen(false);
     setActiveCallId(callId);
 
+    // Play outgoing ringtone alert
+    startOutgoingRingtone();
+
     try {
       const constraints = {
-        audio: true,
-        video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          deviceId: selectedAudioInput ? { exact: selectedAudioInput } : undefined
+        },
+        video: isVideo ? {
+          width: videoQuality === 'hd' ? 1280 : (videoQuality === 'sd' ? 640 : 320),
+          height: videoQuality === 'hd' ? 720 : (videoQuality === 'sd' ? 480 : 240),
+          deviceId: selectedVideoInput ? { exact: selectedVideoInput } : undefined
+        } : false
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -804,6 +920,9 @@ function App() {
     const incoming = incomingOfferRef.current;
     if (!incoming) return;
 
+    // Silence synthesized ringtone loops
+    stopRingtone();
+
     setCallState('connected');
     setAudioMuted(false);
     setVideoMuted(false);
@@ -812,8 +931,17 @@ function App() {
 
     try {
       const constraints = {
-        audio: true,
-        video: incoming.isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          deviceId: selectedAudioInput ? { exact: selectedAudioInput } : undefined
+        },
+        video: incoming.isVideo ? {
+          width: videoQuality === 'hd' ? 1280 : (videoQuality === 'sd' ? 640 : 320),
+          height: videoQuality === 'hd' ? 720 : (videoQuality === 'sd' ? 480 : 240),
+          deviceId: selectedVideoInput ? { exact: selectedVideoInput } : undefined
+        } : false
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -861,6 +989,7 @@ function App() {
   };
 
   const onDecline = () => {
+    stopRingtone();
     const incoming = incomingOfferRef.current;
     if (incoming) {
       socket.emit(SOCKET_EVENTS.CALL_REJECTED, { to: incoming.from, callId: incoming.callId });
@@ -869,16 +998,64 @@ function App() {
   };
 
   const onHangup = () => {
+    stopRingtone();
     if (callPartner && (callState === 'connected' || callState === 'dialing')) {
       const duration = callDurationRef.current || 0;
       socket.emit(SOCKET_EVENTS.END_CALL, { 
         to: callPartner.id, 
         callId: activeCallIdRef.current,
         duration,
-        type: isVideoCall ? 'video' : 'audio'
+        type: isVideoCall ? 'video' : 'audio',
+        status: callState === 'dialing' ? 'missed' : 'answered'
       });
     }
     cleanupCall();
+  };
+
+  const onDeviceChange = async (audioId, videoId, quality) => {
+    setSelectedAudioInput(audioId);
+    setSelectedVideoInput(videoId);
+    setVideoQuality(quality);
+
+    // Apply hot-swap only when active connected call is ongoing
+    if (callState === 'connected' && localStreamRef.current) {
+      try {
+        const constraints = {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            deviceId: audioId ? { exact: audioId } : undefined
+          },
+          video: isVideoCall ? {
+            width: quality === 'hd' ? 1280 : (quality === 'sd' ? 640 : 320),
+            height: quality === 'hd' ? 720 : (quality === 'sd' ? 480 : 240),
+            deviceId: videoId ? { exact: videoId } : undefined
+          } : false
+        };
+
+        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        // Terminate old tracks safely
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = newStream;
+        setLocalStream(newStream);
+
+        // Replace tracks in current peer connection
+        if (pcRef.current) {
+          const senders = pcRef.current.getSenders();
+          newStream.getTracks().forEach(track => {
+            const sender = senders.find(s => s.track && s.track.kind === track.kind);
+            if (sender) {
+              sender.replaceTrack(track);
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Track hot-swapping failed:', err);
+        showToast('Failed to toggle camera/microphone track', 'error');
+      }
+    }
   };
 
   const toggleAudio = () => {
@@ -959,6 +1136,7 @@ function App() {
           latencyQuality={latencyQuality}
           rooms={rooms}
           messages={messages}
+          setMessages={setMessages}
           onlineUsers={onlineUsers}
           activeChat={activeChat}
           setActiveChat={setActiveChat}
@@ -990,8 +1168,8 @@ function App() {
       ) : (
         <Login 
           initialTab={window.location.hash === '#register-admin' ? 'register_admin' : 'login'}
-          onLogin={(u, token, remember) => {
-            handleLogin(u, token, remember);
+          onLogin={(u, token, refreshToken, remember) => {
+            handleLogin(u, token, refreshToken, remember);
             setView('app');
           }} 
           theme={theme} 
@@ -1020,6 +1198,15 @@ function App() {
           startScreenShare={startScreenShare}
           stopScreenShare={stopScreenShare}
           isSharingScreen={isSharingScreen}
+          selectedAudioInput={selectedAudioInput}
+          setSelectedAudioInput={setSelectedAudioInput}
+          selectedVideoInput={selectedVideoInput}
+          setSelectedVideoInput={setSelectedVideoInput}
+          selectedAudioOutput={selectedAudioOutput}
+          setSelectedAudioOutput={setSelectedAudioOutput}
+          videoQuality={videoQuality}
+          setVideoQuality={setVideoQuality}
+          onDeviceChange={onDeviceChange}
         />
       )}
       

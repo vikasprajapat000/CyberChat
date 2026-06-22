@@ -5,7 +5,7 @@ import {
   Copy, X, Image as ImageIcon, FileText, ArrowLeft, Star, Forward,
   ChevronDown, AlertTriangle, Info, Eye, ShieldAlert, Phone, Video,
   Mic, MicOff, BarChart2, CheckSquare, ExternalLink, HelpCircle, Sticker,
-  Lock, Clock, MapPin, Languages
+  Lock, Clock, MapPin, Languages, ClipboardList, Camera
 } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import ForwardModal from './ForwardModal';
@@ -33,6 +33,7 @@ function ChatArea({
   activeChat,
   setActiveChat,
   messages,
+  setMessages,
   typingUsers,
   onlineUsers,
   onInspectUser,
@@ -58,6 +59,9 @@ function ChatArea({
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const [pollCreatorOpen, setPollCreatorOpen] = useState(false);
   const [showLinksDrawer, setShowLinksDrawer] = useState(false);
+  const [showGroupDrawer, setShowGroupDrawer] = useState(false);
+  const [taskNameInput, setTaskNameInput] = useState('');
+  const [taskAssigneeId, setTaskAssigneeId] = useState('');
   const [screenshotAlert, setScreenshotAlert] = useState(null);
   const [forwardingMessage, setForwardingMessage] = useState(null);
 
@@ -92,19 +96,23 @@ function ChatArea({
   const [viewOnceEnabled, setViewOnceEnabled] = useState(false);
   const [activeViewOnceMsg, setActiveViewOnceMsg] = useState(null);
 
-  // Advanced checklist states
   const [vanishModeEnabled, setVanishModeEnabled] = useState(false);
   const [scheduledDelay, setScheduledDelay] = useState(null); // delay in milliseconds
   const [showScheduleDropdown, setShowScheduleDropdown] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState({});
   const [inputFocused, setInputFocused] = useState(false);
+  const [showAttachmentPopover, setShowAttachmentPopover] = useState(false);
+  const [openActionsId, setOpenActionsId] = useState(null);
 
   const chatEndRef = useRef(null);
+  const touchTimerRef = useRef(null);
+  const touchStartPosRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const recordingTimerRef = useRef(null);
   const isTypingRef = useRef(false);
+  const offlineQueueRef = useRef([]);
 
   // Keyboard Shortcuts setup
   useEffect(() => {
@@ -135,6 +143,22 @@ function ChatArea({
     }
   }, [messages, typingUsers, replyingTo, filePreview, isRecording, isScrolledToBottom]);
 
+  // Flush offline queue on reconnection
+  useEffect(() => {
+    if (connected && offlineQueueRef.current && offlineQueueRef.current.length > 0 && socket) {
+      showToast('Reconnected: Syncing offline messages...', 'success');
+      const queue = [...offlineQueueRef.current];
+      offlineQueueRef.current = [];
+
+      queue.forEach(({ payload, tempId }) => {
+        socket.emit('send_message', payload);
+        if (setMessages) {
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sending' } : m));
+        }
+      });
+    }
+  }, [connected, socket]);
+
   // Clean up on conversation targets swap
   useEffect(() => {
     setInputText('');
@@ -147,6 +171,9 @@ function ChatArea({
     setEmojiPickerOpen(false);
     setStickerPickerOpen(false);
     setShowLinksDrawer(false);
+    setShowGroupDrawer(false);
+    setTaskNameInput('');
+    setTaskAssigneeId('');
     setVisibleLimit(50);
     setIsScrolledToBottom(true);
     stopRecording(false); // Abort any active recording
@@ -350,8 +377,87 @@ function ChatArea({
     showToast('Poll launched!', 'success');
   };
 
+  // Productivity note & task handlers
+  const activeRoomObj = activeChat && activeChat.type === 'group' ? rooms.find(r => r.id === activeChat.id) : null;
+  const activeRoomNotes = activeRoomObj?.notes || '';
+  const activeRoomTasks = activeRoomObj?.tasks || [];
+  const activeRoomMembers = activeRoomObj?.members || [];
+
+  const handleNotesChange = (e) => {
+    if (!activeChat || activeChat.type !== 'group') return;
+    socket.emit('sync_notes', {
+      roomId: activeChat.id,
+      notesText: e.target.value
+    });
+  };
+
+  const handleAddTask = (e) => {
+    e.preventDefault();
+    if (!activeChat || activeChat.type !== 'group' || !taskNameInput.trim()) return;
+
+    socket.emit('create_task', {
+      roomId: activeChat.id,
+      taskName: taskNameInput.trim(),
+      taskAssigneeId: taskAssigneeId || user.id
+    });
+
+    setTaskNameInput('');
+    setTaskAssigneeId('');
+    showToast('Task assigned!', 'success');
+  };
+
+  const handleToggleTask = (taskId, currentlyCompleted) => {
+    if (!activeChat || activeChat.type !== 'group') return;
+    socket.emit('update_task', {
+      roomId: activeChat.id,
+      taskId,
+      completed: !currentlyCompleted
+    });
+  };
+
+  const handleTouchStart = (e, msg) => {
+    if (isSelectionMode || msg.deleted) return;
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+
+    touchTimerRef.current = setTimeout(() => {
+      setActiveMenuId(msg.id);
+      setOpenActionsId(msg.id);
+      showToast('Message actions menu opened', 'info');
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, 700);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchStartPosRef.current) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+
+    if (dx > 10 || dy > 10) {
+      if (touchTimerRef.current) {
+        clearTimeout(touchTimerRef.current);
+        touchTimerRef.current = null;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+    touchStartPosRef.current = null;
+  };
+
   // Star message triggers
   const handleStarToggle = (msgId) => {
+    setActiveMenuId(null);
+    setOpenActionsId(null);
     let updated;
     if (starredMessageIds.includes(msgId)) {
       updated = starredMessageIds.filter(id => id !== msgId);
@@ -499,7 +605,7 @@ function ChatArea({
   };
 
   const handleSend = async () => {
-    if (!connected || !socket) return;
+    if (!socket) return;
 
     if (editingMessage) {
       if (!inputText.trim()) return;
@@ -609,7 +715,34 @@ function ChatArea({
       }
     }
 
-    socket.emit('send_message', payload);
+    // Generate Client-Side unique ID for optimistic reconciliation
+    const tempId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const optMsg = {
+      id: tempId,
+      senderId: user.id,
+      recipientId: activeChat.type === 'direct' ? activeChat.id : null,
+      roomId: activeChat.type === 'group' ? activeChat.id : null,
+      text: payload.text,
+      mediaUrl: fileUrl,
+      mediaType: fileType,
+      mediaName: fileName,
+      replyToId: replyingTo ? replyingTo.id : null,
+      timestamp: new Date().toISOString(),
+      status: connected ? 'sending' : 'pending',
+      viewOnce: viewOnceEnabled
+    };
+
+    // Insert optimistic message immediately in state
+    if (setMessages) {
+      setMessages(prev => [...prev, optMsg]);
+    }
+
+    if (!connected) {
+      offlineQueueRef.current.push({ payload, tempId });
+      showToast('Offline: Message queued to dispatch on reconnection.', 'warning');
+    } else {
+      socket.emit('send_message', payload);
+    }
 
     setInputText('');
     setReplyingTo(null);
@@ -686,6 +819,7 @@ function ChatArea({
 
   const handleAction = (action, msg) => {
     setActiveMenuId(null);
+    setOpenActionsId(null);
     if (action === 'reply') {
       setEditingMessage(null);
       setReplyingTo(msg);
@@ -729,6 +863,8 @@ function ChatArea({
     if (msg.senderId !== user.id) return null;
     if (msg.status === 'seen') return <span className="ticks-seen" style={{ marginLeft: '4px', fontSize: '11px' }}>✓✓</span>;
     if (msg.status === 'delivered') return <span className="ticks-delivered" style={{ marginLeft: '4px', fontSize: '11px' }}>✓✓</span>;
+    if (msg.status === 'sending') return <Clock size={11} style={{ marginLeft: '4px', color: 'var(--text-muted)', animation: 'blink 1.5s infinite' }} />;
+    if (msg.status === 'pending') return <Clock size={11} style={{ marginLeft: '4px', color: 'var(--text-muted)', opacity: 0.6 }} />;
     return <span className="ticks-sent" style={{ marginLeft: '4px', fontSize: '11px' }}>✓</span>;
   };
 
@@ -831,12 +967,23 @@ function ChatArea({
 
             {/* 3. Shared links panel toggle */}
             <button
-              onClick={() => setShowLinksDrawer(!showLinksDrawer)}
+              onClick={() => { setShowLinksDrawer(!showLinksDrawer); setShowGroupDrawer(false); }}
               data-tooltip="Shared Links"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: showLinksDrawer ? 'var(--primary)' : 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
             >
               <ExternalLink size={18} />
             </button>
+
+            {/* 3.5 Group Notes & Tasks Drawer (Groups Only) */}
+            {activeChat.type === 'group' && (
+              <button
+                onClick={() => { setShowGroupDrawer(!showGroupDrawer); setShowLinksDrawer(false); }}
+                data-tooltip="Group Notes & Tasks"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: showGroupDrawer ? 'var(--primary)' : 'var(--text-secondary)', padding: '8px', borderRadius: '6px' }}
+              >
+                <ClipboardList size={18} />
+              </button>
+            )}
 
             {/* 4. Search message box toggle */}
             <button
@@ -1026,7 +1173,10 @@ function ChatArea({
                         alignItems: isSelf ? 'flex-end' : 'flex-start'
                       }}
                       onMouseEnter={() => !msg.deleted && !isSelectionMode && setActiveMenuId(msg.id)}
-                      onMouseLeave={() => setActiveMenuId(null)}
+                      onMouseLeave={() => {
+                        setActiveMenuId(null);
+                        setOpenActionsId(null);
+                      }}
                     >
                       {/* Emoji reaction toolbar on hover */}
                       {activeMenuId === msg.id && (
@@ -1063,6 +1213,10 @@ function ChatArea({
                       {/* Bubble */}
                       <div 
                         className="glass-card"
+                        onTouchStart={(e) => handleTouchStart(e, msg)}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchCancel={handleTouchEnd}
                         style={{
                           padding: '10px 14px',
                           borderRadius: isSelf 
@@ -1353,8 +1507,7 @@ function ChatArea({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const panel = document.getElementById(`actions-${msg.id}`);
-                                if (panel) panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+                                setOpenActionsId(openActionsId === msg.id ? null : msg.id);
                               }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex' }}
                             >
@@ -1365,7 +1518,7 @@ function ChatArea({
                               id={`actions-${msg.id}`}
                               className="glass-panel"
                               style={{
-                                display: 'none',
+                                display: openActionsId === msg.id ? 'block' : 'none',
                                 position: 'absolute',
                                 bottom: '20px',
                                 right: 0,
@@ -1609,6 +1762,240 @@ function ChatArea({
             </div>
           )}
 
+          {/* Attachment Grid Popover */}
+          {showAttachmentPopover && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 98 }} onClick={() => setShowAttachmentPopover(false)} />
+              <div 
+                className="glass-panel animate-scale"
+                style={{
+                  position: 'absolute',
+                  bottom: '70px',
+                  left: '20px',
+                  zIndex: 100,
+                  width: '280px',
+                  padding: '16px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--bg-panel)',
+                  boxShadow: 'var(--shadow-lg)',
+                  border: '1px solid var(--border-glass)',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '12px',
+                  justifyItems: 'center',
+                  alignItems: 'center'
+                }}
+              >
+                {/* Option 1: Document */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    fileInputRef.current?.click();
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={attachmentPopoverBtnStyle}
+                  title="Document"
+                >
+                  <div style={{ ...attachmentIconCircle, backgroundColor: '#2196f3' }}>
+                    <FileText size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Document</span>
+                </button>
+
+                {/* Option 2: Camera / Photo */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    fileInputRef.current?.click();
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={attachmentPopoverBtnStyle}
+                  title="Camera"
+                >
+                  <div style={{ ...attachmentIconCircle, backgroundColor: '#e91e63' }}>
+                    <Camera size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Camera</span>
+                </button>
+
+                {/* Option 3: Sticker */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStickerPickerOpen(true);
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={attachmentPopoverBtnStyle}
+                  title="Sticker"
+                >
+                  <div style={{ ...attachmentIconCircle, backgroundColor: '#00bcd4' }}>
+                    <Sticker size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Sticker</span>
+                </button>
+
+                {/* Option 4: Poll (Group chats only) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeChat.type === 'group') {
+                      setPollCreatorOpen(true);
+                    } else {
+                      showToast('Polls are only supported in groups', 'info');
+                    }
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={{
+                    ...attachmentPopoverBtnStyle,
+                    opacity: activeChat.type === 'group' ? 1 : 0.5
+                  }}
+                  title="Poll"
+                >
+                  <div style={{ ...attachmentIconCircle, backgroundColor: '#4caf50' }}>
+                    <BarChart2 size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Poll</span>
+                </button>
+
+                {/* Option 5: Simulated Location */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAttachmentPopover(false);
+                    const confirmShare = window.confirm("Do you want to share your simulated live location coordinates?");
+                    if (confirmShare) {
+                      socket.emit('send_message', {
+                        senderId: user.id,
+                        recipientId: activeChat.type === 'direct' ? activeChat.id : null,
+                        roomId: activeChat.type === 'group' ? activeChat.id : null,
+                        text: '📍 Shared simulated live location',
+                        mediaUrl: JSON.stringify({ lat: 40.7128, lng: -74.0060 }),
+                        mediaType: 'location'
+                      });
+                      showToast('Simulated location shared!', 'success');
+                    }
+                  }}
+                  style={attachmentPopoverBtnStyle}
+                  title="Location"
+                >
+                  <div style={{ ...attachmentIconCircle, backgroundColor: '#ff9800' }}>
+                    <MapPin size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Location</span>
+                </button>
+
+                {/* Option 6: Vanish Mode */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeChat.type === 'direct') {
+                      setVanishModeEnabled(!vanishModeEnabled);
+                      if (!vanishModeEnabled) {
+                        showToast('Vanish Mode Enabled (Bypasses DB, 15s auto-clear)', 'purple');
+                      } else {
+                        showToast('Vanish Mode Disabled', 'info');
+                      }
+                    } else {
+                      showToast('Vanish Mode is only available in direct messages', 'info');
+                    }
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={{
+                    ...attachmentPopoverBtnStyle,
+                    opacity: activeChat.type === 'direct' ? 1 : 0.5
+                  }}
+                  title="Vanish Mode"
+                >
+                  <div style={{ 
+                    ...attachmentIconCircle, 
+                    backgroundColor: vanishModeEnabled ? '#a855f7' : '#9c27b0'
+                  }}>
+                    <Lock size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Vanish</span>
+                </button>
+
+                {/* Option 7: View-Once */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewOnceEnabled(!viewOnceEnabled);
+                    if (!viewOnceEnabled) {
+                      showToast('View-Once Mode Enabled (Next message self-destructs after reading)', 'warning');
+                    } else {
+                      showToast('View-Once Mode Disabled', 'info');
+                    }
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={attachmentPopoverBtnStyle}
+                  title="View-Once"
+                >
+                  <div style={{ 
+                    ...attachmentIconCircle, 
+                    backgroundColor: viewOnceEnabled ? '#ff5722' : '#ff9800'
+                  }}>
+                    <Eye size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>View Once</span>
+                </button>
+
+                {/* Option 8: Schedule Message */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowScheduleDropdown(!showScheduleDropdown);
+                    setShowAttachmentPopover(false);
+                  }}
+                  style={attachmentPopoverBtnStyle}
+                  title="Schedule Message"
+                >
+                  <div style={{ 
+                    ...attachmentIconCircle, 
+                    backgroundColor: scheduledDelay !== null ? '#009688' : '#3f51b5'
+                  }}>
+                    <Clock size={20} color="#fff" />
+                  </div>
+                  <span style={attachmentPopoverText}>Schedule</span>
+                </button>
+
+                {/* Option 9: Disappearing Timer */}
+                <div 
+                  style={{
+                    ...attachmentPopoverBtnStyle,
+                    position: 'relative'
+                  }}
+                >
+                  <div style={{ ...attachmentIconCircle, backgroundColor: disappearingTimer > 0 ? '#ffc107' : '#607d8b' }}>
+                    <Clock size={20} color="#fff" />
+                  </div>
+                  <select
+                    value={disappearingTimer}
+                    onChange={(e) => {
+                      setDisappearingTimer(Number(e.target.value));
+                      setShowAttachmentPopover(false);
+                    }}
+                    title="Disappearing Timer"
+                    style={{
+                      position: 'absolute',
+                      top: 0, left: 0, width: '100%', height: '100%',
+                      opacity: 0,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value={0}>⏱️ Off</option>
+                    <option value={10}>⏱️ 10s</option>
+                    <option value={60}>⏱️ 1m</option>
+                    <option value={3600}>⏱️ 1h</option>
+                    <option value={86400}>⏱️ 1d</option>
+                  </select>
+                  <span style={attachmentPopoverText}>
+                    {disappearingTimer > 0 ? `${disappearingTimer}s` : 'Timer'}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Custom Emojis Picker Popover Drawer */}
           {emojiPickerOpen && (
             <div style={{ position: 'absolute', bottom: '70px', left: '20px', zIndex: 100 }}>
@@ -1666,242 +2053,49 @@ function ChatArea({
           )}
 
           {/* Composer Form Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', width: '100%' }}>
             
-            {/* Attachment picker */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isRecording}
-              data-tooltip="Attach File"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)' }}
-            >
-              <Paperclip size={18} />
-            </button>
+            {/* Left buttons (Emoji & Attachment) */}
+            {!isRecording && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {/* Emoji button */}
+                <button
+                  type="button"
+                  onClick={() => setEmojiPickerOpen(!emojiPickerOpen)}
+                  disabled={isRecording}
+                  title="Emojis"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Smile size={18} />
+                </button>
+
+                {/* Attachment button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAttachmentPopover(!showAttachmentPopover)}
+                  disabled={isRecording}
+                  title="Attachments"
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    cursor: 'pointer', 
+                    color: showAttachmentPopover ? 'var(--primary)' : 'var(--text-secondary)', 
+                    padding: '8px', 
+                    borderRadius: '50%', 
+                    backgroundColor: showAttachmentPopover ? 'var(--primary-light)' : 'var(--bg-app)',
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center' 
+                  }}
+                >
+                  <Paperclip size={18} style={{ transform: 'rotate(45deg)' }} />
+                </button>
+              </div>
+            )}
+
             <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} />
 
-            {/* Emoji popover */}
-            <button
-              type="button"
-              onClick={() => setEmojiPickerOpen(!emojiPickerOpen)}
-              disabled={isRecording}
-              data-tooltip="Emojis"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)' }}
-            >
-              <Smile size={18} />
-            </button>
-
-            {/* Sticker popover */}
-            <button
-              type="button"
-              onClick={() => setStickerPickerOpen(!stickerPickerOpen)}
-              disabled={isRecording}
-              data-tooltip="Stickers Pack"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)' }}
-            >
-              <Sticker size={18} />
-            </button>
-
-            {/* Poll creator (only in group rooms) */}
-            {activeChat.type === 'group' && (
-              <button
-                type="button"
-                onClick={() => setPollCreatorOpen(true)}
-                disabled={isRecording}
-                data-tooltip="Create Poll"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)' }}
-              >
-                <BarChart2 size={18} />
-              </button>
-            )}
-
-            {/* Live Location sharing */}
-            <button
-              type="button"
-              onClick={() => {
-                const confirmShare = window.confirm("Do you want to share your simulated live location coordinates?");
-                if (confirmShare) {
-                  socket.emit('send_message', {
-                    senderId: user.id,
-                    recipientId: activeChat.type === 'direct' ? activeChat.id : null,
-                    roomId: activeChat.type === 'group' ? activeChat.id : null,
-                    text: '📍 Shared simulated live location',
-                    mediaUrl: JSON.stringify({ lat: 40.7128, lng: -74.0060 }),
-                    mediaType: 'location'
-                  });
-                  showToast('Simulated location shared!', 'success');
-                }
-              }}
-              disabled={isRecording}
-              data-tooltip="Share Coordinates Map"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)' }}
-            >
-              <MapPin size={18} />
-            </button>
-
-            {/* Disappearing timer selector */}
-            <select
-              value={disappearingTimer}
-              onChange={(e) => setDisappearingTimer(Number(e.target.value))}
-              disabled={isRecording}
-              title="Disappearing Message Timer"
-              style={{
-                backgroundColor: 'var(--bg-app)',
-                color: disappearingTimer > 0 ? 'var(--warning)' : 'var(--text-secondary)',
-                border: disappearingTimer > 0 ? '1px solid var(--warning)' : '1px solid var(--border-glass)',
-                borderRadius: '8px',
-                padding: '6px',
-                fontSize: '12px',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              <option value={0}>⏱️ Off</option>
-              <option value={10}>⏱️ 10s</option>
-              <option value={60}>⏱️ 1m</option>
-              <option value={3600}>⏱️ 1h</option>
-              <option value={86400}>⏱️ 1d</option>
-            </select>
-
-            {/* View-once ephemeral toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                setViewOnceEnabled(!viewOnceEnabled);
-                if (!viewOnceEnabled) {
-                  showToast('View-Once Mode Enabled (Next message will self-destruct after reading)', 'warning');
-                }
-              }}
-              disabled={isRecording}
-              data-tooltip="View-Once Ephemeral Message"
-              style={{
-                background: 'none',
-                cursor: 'pointer',
-                color: viewOnceEnabled ? 'var(--warning)' : 'var(--text-secondary)',
-                padding: '8px',
-                borderRadius: '50%',
-                backgroundColor: viewOnceEnabled ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-app)',
-                border: viewOnceEnabled ? '1px solid var(--warning)' : 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <Eye size={18} />
-            </button>
-
-            {/* Vanish Mode (Secret Chat) toggle */}
-            {activeChat.type === 'direct' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setVanishModeEnabled(!vanishModeEnabled);
-                  if (!vanishModeEnabled) {
-                    showToast('Vanish Mode Enabled (Bypasses DB, 15s auto-clear)', 'purple');
-                  } else {
-                    showToast('Vanish Mode Disabled', 'info');
-                  }
-                }}
-                disabled={isRecording}
-                data-tooltip="Vanish Mode (Secret Chat)"
-                style={{
-                  background: 'none',
-                  cursor: 'pointer',
-                  color: vanishModeEnabled ? '#a855f7' : 'var(--text-secondary)',
-                  padding: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: vanishModeEnabled ? 'rgba(168, 85, 247, 0.15)' : 'var(--bg-app)',
-                  border: vanishModeEnabled ? '1.5px solid #a855f7' : 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <Lock size={18} />
-              </button>
-            )}
-
-            {/* Scheduled messages picker */}
-            <div style={{ position: 'relative' }}>
-              <button
-                type="button"
-                onClick={() => setShowScheduleDropdown(!showScheduleDropdown)}
-                disabled={isRecording}
-                data-tooltip="Schedule Message Delivery"
-                style={{
-                  background: 'none',
-                  cursor: 'pointer',
-                  color: scheduledDelay !== null ? 'var(--primary)' : 'var(--text-secondary)',
-                  padding: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: scheduledDelay !== null ? 'var(--primary-light)' : 'var(--bg-app)',
-                  border: scheduledDelay !== null ? '1px solid var(--primary)' : 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <Clock size={18} />
-              </button>
-
-              {showScheduleDropdown && (
-                <>
-                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowScheduleDropdown(false)} />
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '44px',
-                    left: 0,
-                    backgroundColor: 'var(--bg-panel)',
-                    border: '1px solid var(--border-glass)',
-                    borderRadius: '8px',
-                    boxShadow: 'var(--shadow-md)',
-                    zIndex: 100,
-                    width: '150px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    padding: '6px'
-                  }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, padding: '4px 8px', textTransform: 'uppercase' }}>Select Delay</span>
-                    <button
-                      onClick={() => { setScheduledDelay(10000); setShowScheduleDropdown(false); showToast('Queued with 10s delay', 'info'); }}
-                      style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      ⏱️ 10 Seconds
-                    </button>
-                    <button
-                      onClick={() => { setScheduledDelay(30000); setShowScheduleDropdown(false); showToast('Queued with 30s delay', 'info'); }}
-                      style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      ⏱️ 30 Seconds
-                    </button>
-                    <button
-                      onClick={() => { setScheduledDelay(60000); setShowScheduleDropdown(false); showToast('Queued with 1m delay', 'info'); }}
-                      style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      ⏱️ 1 Minute
-                    </button>
-                    {scheduledDelay !== null && (
-                      <button
-                        onClick={() => { setScheduledDelay(null); setShowScheduleDropdown(false); showToast('Scheduling disabled', 'info'); }}
-                        style={{ padding: '8px', border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '12px', textAlign: 'left', borderRadius: '4px', borderTop: '1px solid var(--border-glass)' }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        ❌ Cancel Delay
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* HTML5 Voice Messages Recorder Toggle Mic */}
+            {/* Main composer text input or recording widget */}
             {isRecording ? (
               <div 
                 className="glass-panel"
@@ -1957,56 +2151,233 @@ function ChatArea({
               />
             )}
 
-            {/* Mic trigger or send action */}
+            {/* Right buttons (Camera & Mic/Send) */}
             {!isRecording && (
-              inputText.trim() || selectedFile ? (
-                <button
-                  onClick={handleSendTextSubmit}
-                  disabled={!connected || uploading}
-                  style={{
-                    backgroundColor: 'var(--primary)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: isMobile ? '36px' : '42px',
-                    height: isMobile ? '36px' : '42px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0
-                  }}
-                >
-                  <Send size={16} />
-                </button>
-              ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {/* Camera button */}
                 <button
                   type="button"
-                  onClick={startRecording}
-                  disabled={!connected}
-                  data-tooltip="Record Voice message"
-                  style={{
-                    backgroundColor: 'var(--bg-app)',
-                    color: 'var(--text-secondary)',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: isMobile ? '36px' : '42px',
-                    height: isMobile ? '36px' : '42px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0
-                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  title="Camera / Photo"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Mic size={18} />
+                  <Camera size={18} />
                 </button>
-              )
+
+                {/* Send / Mic button */}
+                {inputText.trim() || selectedFile || editingMessage ? (
+                  <button
+                    onClick={handleSendTextSubmit}
+                    disabled={!connected || uploading}
+                    style={{
+                      backgroundColor: 'var(--primary)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: isMobile ? '36px' : '42px',
+                      height: isMobile ? '36px' : '42px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Send size={16} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    disabled={!connected}
+                    title="Record Voice Note"
+                    style={{
+                      backgroundColor: 'var(--bg-app)',
+                      color: 'var(--text-secondary)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: isMobile ? '36px' : '42px',
+                      height: isMobile ? '36px' : '42px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Mic size={18} />
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
       )}
       </div>
+
+      {/* C. Group Details Drawer (Notes & Tasks) */}
+      {activeChat.type === 'group' && showGroupDrawer && (
+        <div 
+          className="glass-panel animate-slide"
+          style={{
+            width: '280px',
+            backgroundColor: 'var(--bg-panel)',
+            borderLeft: '1px solid var(--border-glass)',
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            flexShrink: 0
+          }}
+        >
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+              <CheckSquare size={15} style={{ color: 'var(--primary)' }} /> Notes & Tasks
+            </h4>
+            <button onClick={() => setShowGroupDrawer(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={16} /></button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Collaborative Notepad section */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                ✍️ Group Notepad
+              </span>
+              <textarea
+                value={activeRoomNotes}
+                onChange={handleNotesChange}
+                placeholder="Collaborative notes... Synced in real-time."
+                rows={6}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid var(--border-glass)',
+                  background: 'var(--bg-app)',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  fontSize: '12px',
+                  resize: 'none',
+                  lineHeight: '1.4',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Shared Tasks management list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                📋 Task List ({activeRoomTasks.length})
+              </span>
+              
+              {/* Add Task form */}
+              <form onSubmit={handleAddTask} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Task name..."
+                  value={taskNameInput}
+                  onChange={(e) => setTaskNameInput(e.target.value)}
+                  required
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1.5px solid var(--border-glass)',
+                    background: 'var(--bg-app)',
+                    color: 'var(--text-primary)',
+                    outline: 'none',
+                    fontSize: '12px',
+                    width: '100%',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <select
+                    value={taskAssigneeId}
+                    onChange={(e) => setTaskAssigneeId(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1.5px solid var(--border-glass)',
+                      background: 'var(--bg-app)',
+                      color: 'var(--text-primary)',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">Assign To...</option>
+                    {onlineUsers.filter(u => activeRoomMembers.includes(u.id)).map(u => (
+                      <option key={u.id} value={u.id}>{u.username}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    style={{
+                      backgroundColor: 'var(--primary)',
+                      color: 'var(--text-on-primary)',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      fontWeight: 700,
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+              </form>
+
+              {/* Tasks items list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                {activeRoomTasks.length === 0 ? (
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>No tasks assigned.</span>
+                ) : (
+                  activeRoomTasks.map(tsk => {
+                    const assignee = onlineUsers.find(u => u.id === tsk.assigneeId);
+                    const name = assignee ? assignee.username : 'User';
+                    return (
+                      <div
+                        key={tsk.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          backgroundColor: 'var(--bg-app)',
+                          border: '1px solid var(--border-glass)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={tsk.completed}
+                            onChange={() => handleToggleTask(tsk.id, tsk.completed)}
+                            style={{ cursor: 'pointer', accentColor: 'var(--primary)' }}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <span style={{
+                              fontSize: '12px',
+                              color: 'var(--text-primary)',
+                              textDecoration: tsk.completed ? 'line-through' : 'none',
+                              fontWeight: 500,
+                              display: 'block',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}>{tsk.name}</span>
+                            <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>Assignee: {name}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* B. Productivity Shared Links sidebar panel (Extracts url cards) */}
       {showLinksDrawer && (
@@ -2180,5 +2551,36 @@ function DisappearingCountdown({ disappearsAt }) {
     </span>
   );
 }
+
+const attachmentPopoverBtnStyle = {
+  background: 'none',
+  border: 'none',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '6px',
+  cursor: 'pointer',
+  padding: '4px',
+  width: '100%',
+  outline: 'none'
+};
+
+const attachmentIconCircle = {
+  width: '44px',
+  height: '44px',
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow: '0 4px 10px rgba(0, 0, 0, 0.25)',
+  transition: 'transform 0.15s ease'
+};
+
+const attachmentPopoverText = {
+  fontSize: '11px',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  whiteSpace: 'nowrap'
+};
 
 export default ChatArea;

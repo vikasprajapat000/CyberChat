@@ -1,6 +1,10 @@
 // frontend/src/components/CallModal.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Tv, Monitor, Clock, ShieldCheck, Volume2, VolumeX, Radio, Camera } from 'lucide-react';
+import { 
+  Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Tv, Monitor, 
+  Clock, ShieldCheck, Volume2, VolumeX, Radio, Camera, Settings, 
+  Maximize2, Minimize2, RefreshCw, X, Sliders, Eye
+} from 'lucide-react';
 
 function CallModal({
   callState,       // 'idle' | 'dialing' | 'receiving' | 'connected'
@@ -18,16 +22,36 @@ function CallModal({
   startScreenShare,
   stopScreenShare,
   isSharingScreen,
-  isMobile
+  isMobile,
+  
+  // Media Device/Quality props
+  selectedAudioInput,
+  setSelectedAudioInput,
+  selectedVideoInput,
+  setSelectedVideoInput,
+  selectedAudioOutput,
+  setSelectedAudioOutput,
+  videoQuality,
+  setVideoQuality,
+  onDeviceChange
 }) {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const previewVideoRef = useRef(null);
+
   const [callDuration, setCallDuration] = useState(0);
   const [noiseCancellation, setNoiseCancellation] = useState(false);
   const [backgroundBlur, setBackgroundBlur] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingTimerRef = useRef(null);
+
+  // Advanced States
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [isMirrored, setIsMirrored] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [previewStream, setPreviewStream] = useState(null);
 
   // Call timer interval
   useEffect(() => {
@@ -61,6 +85,25 @@ function CallModal({
     }
   }, [callState]);
 
+  // Enumerate available hardware devices
+  useEffect(() => {
+    const fetchDevices = async () => {
+      try {
+        // Enforce browser prompt first if not already granted
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+          const list = await navigator.mediaDevices.enumerateDevices();
+          setDevices(list);
+        }
+      } catch (err) {
+        console.warn('Failed to enumerate media devices:', err);
+      }
+    };
+    
+    if (callState === 'connected') {
+      fetchDevices();
+    }
+  }, [callState]);
+
   // Bind video streams on state change
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -74,10 +117,113 @@ function CallModal({
     }
   }, [remoteStream, callState]);
 
+  // Handle incoming video preview before accepting
+  useEffect(() => {
+    if (callState === 'receiving' && isVideoCall) {
+      navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { width: 320, height: 240 }
+      })
+      .then(stream => {
+        setPreviewStream(stream);
+        if (previewVideoRef.current) {
+          previewVideoRef.current.srcObject = stream;
+        }
+      })
+      .catch(err => {
+        console.warn('Preview camera access denied:', err);
+      });
+    }
+
+    return () => {
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop());
+        setPreviewStream(null);
+      }
+    };
+  }, [callState, isVideoCall]);
+
   const formatTimer = (secs) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
     const s = (secs % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
+  };
+
+  // Switch camera: cycles through available video input devices
+  const handleSwitchCamera = () => {
+    const videoInputs = devices.filter(d => d.kind === 'videoinput');
+    if (videoInputs.length < 2) return;
+
+    const currentIdx = videoInputs.findIndex(d => d.deviceId === selectedVideoInput);
+    const nextIdx = (currentIdx + 1) % videoInputs.length;
+    const nextDevice = videoInputs[nextIdx];
+
+    setSelectedVideoInput(nextDevice.deviceId);
+    if (onDeviceChange) {
+      onDeviceChange(selectedAudioInput, nextDevice.deviceId, videoQuality);
+    }
+  };
+
+  // Toggle picture-in-picture mode on remote stream
+  const handleTogglePiP = async () => {
+    if (!remoteVideoRef.current) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await remoteVideoRef.current.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.warn('Picture-in-picture failed:', err);
+    }
+  };
+
+  // Toggle fullscreen mode on remote stream
+  const handleToggleFullscreen = () => {
+    if (!remoteVideoRef.current) return;
+    const container = remoteVideoRef.current;
+    
+    if (!document.fullscreenElement) {
+      if (container.requestFullscreen) container.requestFullscreen();
+      else if (container.webkitRequestFullscreen) container.webkitRequestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  // Speaker destination hot-swap (Sink ID redirection)
+  const handleSpeakerChange = async (sinkId) => {
+    setSelectedAudioOutput(sinkId);
+    if (remoteVideoRef.current && typeof remoteVideoRef.current.setSinkId === 'function') {
+      try {
+        await remoteVideoRef.current.setSinkId(sinkId);
+      } catch (err) {
+        console.warn('Failed to set audio output destination (speaker sink ID):', err);
+      }
+    }
+  };
+
+  const handleDeviceSelect = (type, deviceId) => {
+    let aId = selectedAudioInput;
+    let vId = selectedVideoInput;
+    let q = videoQuality;
+
+    if (type === 'audioinput') {
+      setSelectedAudioInput(deviceId);
+      aId = deviceId;
+    } else if (type === 'videoinput') {
+      setSelectedVideoInput(deviceId);
+      vId = deviceId;
+    } else if (type === 'quality') {
+      setVideoQuality(deviceId);
+      q = deviceId;
+    }
+
+    if (onDeviceChange) {
+      onDeviceChange(aId, vId, q);
+    }
   };
 
   if (callState === 'idle') return null;
@@ -87,91 +233,133 @@ function CallModal({
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
       zIndex: 1200,
-      backgroundColor: 'rgba(7, 12, 14, 0.95)', // ultra-dark overlay
-      backdropFilter: 'blur(12px)',
+      backgroundColor: 'rgba(7, 12, 14, 0.96)',
+      backdropFilter: 'blur(16px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: isMobile ? '0' : '24px'
     }}>
-      {/* A. Ringing Dialog (Receiving Call) */}
+      {/* 1. Incoming Call Screen */}
       {callState === 'receiving' && (
         <div 
           className="glass-panel animate-scale"
           style={{
-            padding: '40px 32px',
+            padding: '32px 24px',
             borderRadius: '24px',
             textAlign: 'center',
             backgroundColor: 'var(--bg-panel)',
             width: '100%',
-            maxWidth: '360px',
+            maxWidth: '380px',
             boxShadow: 'var(--shadow-lg)',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center'
+            alignItems: 'center',
+            border: '1.5px solid var(--border-glass)'
           }}
         >
-          {/* Pulsing ring indicator */}
-          <div style={{
-            width: '80px',
-            height: '80px',
-            borderRadius: '50%',
-            background: 'var(--primary-light)',
-            color: 'var(--primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '24px',
-            animation: 'pulseBorder 1.5s infinite'
-          }}>
-            {isVideoCall ? <Video size={36} /> : <Phone size={36} />}
-          </div>
-          
-          <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-            Incoming {isVideoCall ? 'Video' : 'Voice'} Call
+          {/* Incoming Pre-join Camera Preview (only for video calls) */}
+          {isVideoCall ? (
+            <div style={{
+              width: '180px',
+              height: '180px',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '3px solid var(--primary)',
+              boxShadow: '0 8px 24px rgba(0, 168, 132, 0.3)',
+              backgroundColor: '#111b21',
+              marginBottom: '20px',
+              position: 'relative'
+            }}>
+              <video 
+                ref={previewVideoRef} 
+                autoPlay 
+                playsInline 
+                muted 
+                style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} 
+              />
+              <div style={{
+                position: 'absolute',
+                bottom: '8px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                padding: '2px 8px',
+                borderRadius: '8px',
+                fontSize: '9px',
+                color: '#fff',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <Eye size={10} style={{ color: 'var(--primary)' }} /> PREVIEW
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              width: '90px',
+              height: '90px',
+              borderRadius: '50%',
+              background: 'var(--primary-light)',
+              color: 'var(--primary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              animation: 'pulseBorder 1.5s infinite',
+              fontSize: '32px',
+              fontWeight: 800
+            }}>
+              {getInitials(callPartner?.username)}
+            </div>
+          )}
+
+          <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px', fontFamily: 'Outfit, sans-serif' }}>
+            {callPartner?.username || 'Unknown User'}
           </h3>
-          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '32px' }}>
-            {callPartner?.username || 'Someone'} is calling you...
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '28px' }}>
+            Incoming {isVideoCall ? 'Video' : 'Voice'} Call...
           </p>
 
           <div style={{ display: 'flex', gap: '16px', width: '100%' }}>
-            {/* Decline */}
             <button
               onClick={onDecline}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '12px',
+                padding: '14px',
+                borderRadius: '14px',
                 border: 'none',
                 backgroundColor: 'var(--danger)',
                 color: '#fff',
                 cursor: 'pointer',
-                fontWeight: 600,
+                fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px'
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(239, 68, 68, 0.2)'
               }}
             >
               <PhoneOff size={18} /> Decline
             </button>
             
-            {/* Accept */}
             <button
               onClick={onAccept}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '12px',
+                padding: '14px',
+                borderRadius: '14px',
                 border: 'none',
                 backgroundColor: 'var(--success)',
                 color: '#fff',
                 cursor: 'pointer',
-                fontWeight: 600,
+                fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px'
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(34, 197, 94, 0.2)'
               }}
             >
               <Phone size={18} /> Accept
@@ -180,58 +368,63 @@ function CallModal({
         </div>
       )}
 
-      {/* B. Dialing Dialog (Outgoing Call) */}
+      {/* 2. Outgoing Dialing Screen */}
       {callState === 'dialing' && (
         <div 
           className="glass-panel animate-scale"
           style={{
-            padding: '40px 32px',
+            padding: '32px 24px',
             borderRadius: '24px',
             textAlign: 'center',
             backgroundColor: 'var(--bg-panel)',
             width: '100%',
-            maxWidth: '360px',
+            maxWidth: '380px',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center'
+            alignItems: 'center',
+            border: '1.5px solid var(--border-glass)'
           }}
         >
           <div style={{
-            width: '80px',
-            height: '80px',
+            width: '90px',
+            height: '90px',
             borderRadius: '50%',
             background: 'var(--primary-light)',
             color: 'var(--primary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: '24px'
+            marginBottom: '20px',
+            fontSize: '32px',
+            fontWeight: 800,
+            boxShadow: '0 0 20px rgba(0, 168, 132, 0.1)'
           }}>
-            {isVideoCall ? <Video size={36} className="animate-pulse" /> : <Phone size={36} className="animate-pulse" />}
+            {getInitials(callPartner?.username)}
           </div>
           
-          <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-            Calling...
+          <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px', fontFamily: 'Outfit, sans-serif' }}>
+            Calling {callPartner?.username}
           </h3>
-          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '32px' }}>
-            Waiting for {callPartner?.username} to pick up...
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '28px', animation: 'blink 1.8s infinite' }}>
+            Ringing...
           </p>
 
           <button
             onClick={onHangup}
             style={{
               width: '100%',
-              padding: '12px',
-              borderRadius: '12px',
+              padding: '14px',
+              borderRadius: '14px',
               border: 'none',
               backgroundColor: 'var(--danger)',
               color: '#fff',
               cursor: 'pointer',
-              fontWeight: 600,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px'
+              gap: '8px',
+              boxShadow: '0 4px 14px rgba(239, 68, 68, 0.2)'
             }}
           >
             <PhoneOff size={18} /> Cancel Call
@@ -239,7 +432,7 @@ function CallModal({
         </div>
       )}
 
-      {/* C. Call Workspace (Connected Video/Audio Call Panel) */}
+      {/* 3. Connected Workspace Screen */}
       {callState === 'connected' && (
         <div 
           className="animate-fade"
@@ -247,35 +440,29 @@ function CallModal({
             position: 'relative',
             width: '100%',
             maxWidth: isMobile ? '100%' : '960px',
-            height: isMobile ? '100dvh' : '80vh',
-            maxHeight: isMobile ? '100%' : '680px',
+            height: isMobile ? '100dvh' : '82vh',
+            maxHeight: isMobile ? '100%' : '720px',
             borderRadius: isMobile ? '0' : '24px',
             overflow: 'hidden',
-            backgroundColor: '#1c2024',
-            boxShadow: 'var(--shadow-lg)',
+            backgroundColor: '#0c0f12',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.8)',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            border: isMobile ? 'none' : '1.5px solid var(--border-glass)'
           }}
         >
-          {/* Keyframe Injector for recording blink */}
-          <style>{`
-            @keyframes rec-blink {
-              0%, 100% { opacity: 0.3; }
-              50% { opacity: 1; }
-            }
-          `}</style>
-
-          {/* Calls Timer Display Overlay top-left */}
+          {/* Timer & REC status overlay top-left */}
           <div style={{
             position: 'absolute',
             top: '20px',
             left: '20px',
             display: 'flex',
             gap: '10px',
-            zIndex: 30
+            zIndex: 100
           }}>
             <div style={{
-              backgroundColor: 'rgba(0,0,0,0.6)',
+              backgroundColor: 'rgba(0,0,0,0.65)',
+              backdropFilter: 'blur(8px)',
               padding: '6px 14px',
               borderRadius: '12px',
               color: '#fff',
@@ -283,7 +470,7 @@ function CallModal({
               alignItems: 'center',
               gap: '8px',
               fontSize: '13px',
-              fontWeight: 600
+              fontWeight: 700
             }}>
               <Clock size={14} style={{ color: 'var(--primary)' }} />
               {formatTimer(callDuration)}
@@ -293,6 +480,7 @@ function CallModal({
               <div style={{
                 backgroundColor: 'rgba(239, 68, 68, 0.25)',
                 border: '1px solid var(--danger)',
+                backdropFilter: 'blur(8px)',
                 padding: '6px 14px',
                 borderRadius: '12px',
                 color: '#fff',
@@ -300,7 +488,7 @@ function CallModal({
                 alignItems: 'center',
                 gap: '8px',
                 fontSize: '13px',
-                fontWeight: 600,
+                fontWeight: 700,
                 boxShadow: '0 0 10px rgba(239, 68, 68, 0.3)'
               }}>
                 <span style={{
@@ -309,14 +497,14 @@ function CallModal({
                   borderRadius: '50%',
                   backgroundColor: 'var(--danger)',
                   display: 'inline-block',
-                  animation: 'rec-blink 1s infinite'
+                  animation: 'blink 1s infinite'
                 }}></span>
                 REC {formatTimer(recordingDuration)}
               </div>
             )}
           </div>
 
-          {/* Active Status Badges on the top-center */}
+          {/* Active status/effect badges top-center */}
           <div style={{
             position: 'absolute',
             top: '20px',
@@ -324,17 +512,18 @@ function CallModal({
             transform: 'translateX(-50%)',
             display: 'flex',
             gap: '8px',
-            zIndex: 30
+            zIndex: 100
           }}>
             {noiseCancellation && (
               <span style={{
-                backgroundColor: 'rgba(0, 168, 132, 0.2)',
+                backgroundColor: 'rgba(0, 168, 132, 0.25)',
                 border: '1px solid var(--primary)',
+                backdropFilter: 'blur(8px)',
                 color: 'var(--primary)',
                 padding: '6px 12px',
                 borderRadius: '12px',
-                fontSize: '11px',
-                fontWeight: 700,
+                fontSize: '10px',
+                fontWeight: 800,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
@@ -345,13 +534,14 @@ function CallModal({
             )}
             {backgroundBlur && (
               <span style={{
-                backgroundColor: 'rgba(0, 229, 255, 0.2)',
+                backgroundColor: 'rgba(0, 229, 255, 0.25)',
                 border: '1px solid #00e5ff',
+                backdropFilter: 'blur(8px)',
                 color: '#00e5ff',
                 padding: '6px 12px',
                 borderRadius: '12px',
-                fontSize: '11px',
-                fontWeight: 700,
+                fontSize: '10px',
+                fontWeight: 800,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
@@ -362,9 +552,53 @@ function CallModal({
             )}
           </div>
 
-          {/* Videos Feeds Layout */}
+          {/* Top-Right Remote Screen Controllers */}
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            right: isVideoCall ? '220px' : '20px', // offset local video PIP
+            display: 'flex',
+            gap: '8px',
+            zIndex: 100
+          }}>
+            {isVideoCall && (
+              <>
+                <button
+                  onClick={handleTogglePiP}
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex'
+                  }}
+                  title="Picture in Picture"
+                >
+                  <Tv size={16} />
+                </button>
+                <button
+                  onClick={handleToggleFullscreen}
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex'
+                  }}
+                  title="Toggle Fullscreen"
+                >
+                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Middle Video / Audio Feeds */}
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-            {/* 1. Remote partner video (Main View) */}
             {isVideoCall ? (
               remoteStream ? (
                 <video 
@@ -374,41 +608,53 @@ function CallModal({
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                 />
               ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8696a0', flexDir: 'column', gap: '10px' }}>
-                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#2f353d', display: 'flex', alignItems: 'center', justify: 'center', fontSize: '24px', color: '#fff' }}>
-                    {callPartner?.username ? getInitials(callPartner.username) : '?'}
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#8696a0', gap: '12px' }}>
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#1c2024', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: '#fff', fontWeight: 800 }}>
+                    {getInitials(callPartner?.username)}
                   </div>
-                  <span>Voice Calling {callPartner?.username}...</span>
+                  <span style={{ fontSize: '14px', fontWeight: 600 }}>Connecting video feed...</span>
                 </div>
               )
             ) : (
-              // Audio only view layout
               <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
                 <div 
-                  className="initials-avatar bg-av-2 animate-pulse"
-                  style={{ width: '110px', height: '110px', fontSize: '42px', boxShadow: '0 0 0 10px rgba(0, 168, 132, 0.15)' }}
+                  className="initials-avatar bg-av-3 animate-pulse"
+                  style={{ 
+                    width: '120px', 
+                    height: '120px', 
+                    fontSize: '44px', 
+                    boxShadow: '0 0 0 12px rgba(0, 168, 132, 0.18)',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontWeight: 'bold'
+                  }}
                 >
                   {getInitials(callPartner?.username)}
                 </div>
-                <span style={{ fontSize: '18px', fontWeight: 600, color: '#fff' }}>{callPartner?.username}</span>
-                <span style={{ fontSize: '13px', color: '#8696a0' }}>Voice Call Active</span>
+                <div style={{ textAlign: 'center' }}>
+                  <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>{callPartner?.username}</h3>
+                  <span style={{ fontSize: '13px', color: '#8696a0' }}>Voice Call Connected</span>
+                </div>
               </div>
             )}
 
-            {/* 2. Local self video (PIP mini view in top-right) */}
+            {/* Local Pip Video Feed */}
             {isVideoCall && localStream && (
               <div style={{
                 position: 'absolute',
                 top: '20px',
                 right: '20px',
-                width: '180px',
-                height: '120px',
-                borderRadius: '14px',
+                width: isMobile ? '120px' : '180px',
+                height: isMobile ? '160px' : '120px',
+                borderRadius: '16px',
                 overflow: 'hidden',
                 border: '2px solid rgba(255,255,255,0.2)',
-                boxShadow: 'var(--shadow-md)',
-                zIndex: 20,
-                backgroundColor: '#111b21'
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                zIndex: 90,
+                backgroundColor: '#0c0f12'
               }}>
                 <video 
                   ref={localVideoRef} 
@@ -419,43 +665,141 @@ function CallModal({
                     width: '100%', 
                     height: '100%', 
                     objectFit: 'cover',
-                    filter: backgroundBlur ? 'blur(6px)' : 'none',
-                    transition: 'filter 0.3s ease'
+                    transform: isMirrored ? 'scaleX(-1)' : 'none',
+                    filter: backgroundBlur ? 'blur(8px)' : 'none',
+                    transition: 'all 0.3s ease'
                   }} 
                 />
               </div>
             )}
           </div>
 
-          {/* Bottom control toolbar */}
+          {/* Call settings slider overlay panel */}
+          {showSettingsPanel && (
+            <div 
+              className="glass-panel"
+              style={{
+                position: 'absolute',
+                bottom: '100px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'calc(100% - 40px)',
+                maxWidth: '420px',
+                backgroundColor: 'var(--bg-panel)',
+                border: '1.5px solid var(--border-glass)',
+                borderRadius: '20px',
+                padding: '20px',
+                zIndex: 110,
+                boxShadow: 'var(--shadow-lg)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', color: 'var(--text-primary)' }}>
+                <h4 style={{ margin: 0, fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sliders size={16} style={{ color: 'var(--primary)' }} /> Audio & Video Control
+                </h4>
+                <button 
+                  onClick={() => setShowSettingsPanel(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                {/* Audio Input selection */}
+                <div style={formRowStyle}>
+                  <label style={formLabelStyle}>Microphone Input</label>
+                  <select 
+                    value={selectedAudioInput} 
+                    onChange={e => handleDeviceSelect('audioinput', e.target.value)}
+                    style={formInputStyle}
+                  >
+                    {devices.filter(d => d.kind === 'audioinput').map(d => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone (${d.deviceId.slice(0, 5)})`}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Video Input selection */}
+                {isVideoCall && (
+                  <div style={formRowStyle}>
+                    <label style={formLabelStyle}>Camera Device</label>
+                    <select 
+                      value={selectedVideoInput} 
+                      onChange={e => handleDeviceSelect('videoinput', e.target.value)}
+                      style={formInputStyle}
+                    >
+                      {devices.filter(d => d.kind === 'videoinput').map(d => (
+                        <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera (${d.deviceId.slice(0, 5)})`}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Speaker selection */}
+                <div style={formRowStyle}>
+                  <label style={formLabelStyle}>Speaker Output</label>
+                  <select 
+                    value={selectedAudioOutput} 
+                    onChange={e => handleSpeakerChange(e.target.value)}
+                    style={formInputStyle}
+                  >
+                    {devices.filter(d => d.kind === 'audiooutput').map(d => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label || `Speaker (${d.deviceId.slice(0, 5)})`}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Video Quality Selection */}
+                {isVideoCall && (
+                  <div style={formRowStyle}>
+                    <label style={formLabelStyle}>Target Resolution Quality</label>
+                    <select 
+                      value={videoQuality} 
+                      onChange={e => handleDeviceSelect('quality', e.target.value)}
+                      style={formInputStyle}
+                    >
+                      <option value="hd">HD High Definition (720p)</option>
+                      <option value="sd">SD Standard Definition (480p)</option>
+                      <option value="low">Data Saver Mode (240p)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Connected Call Floating Controls Dashboard */}
           <div style={{
-            height: '84px',
-            backgroundColor: 'rgba(23, 27, 31, 0.95)',
+            height: '92px',
+            backgroundColor: 'rgba(12, 15, 18, 0.94)',
             borderTop: '1px solid rgba(255,255,255,0.06)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '16px',
-            zIndex: 30
+            gap: isMobile ? '8px' : '16px',
+            padding: '0 16px',
+            zIndex: 100
           }}>
             {/* Audio Mute toggle */}
             <button
               onClick={toggleAudio}
               style={{
                 border: 'none',
-                width: '48px',
-                height: '48px',
+                width: '46px',
+                height: '46px',
                 borderRadius: '50%',
-                backgroundColor: audioMuted ? 'var(--danger)' : '#2f353d',
+                backgroundColor: audioMuted ? 'var(--danger)' : '#1e242b',
                 color: '#fff',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                transition: 'all 0.2s'
               }}
               title={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
-              {audioMuted ? <MicOff size={20} /> : <Mic size={20} />}
+              {audioMuted ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
 
             {/* Video Toggle (only for video call type) */}
@@ -464,19 +808,42 @@ function CallModal({
                 onClick={toggleVideo}
                 style={{
                   border: 'none',
-                  width: '48px',
-                  height: '48px',
+                  width: '46px',
+                  height: '46px',
                   borderRadius: '50%',
-                  backgroundColor: videoMuted ? 'var(--danger)' : '#2f353d',
+                  backgroundColor: videoMuted ? 'var(--danger)' : '#1e242b',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                title={videoMuted ? 'Enable camera' : 'Disable camera'}
+              >
+                {videoMuted ? <VideoOff size={18} /> : <Video size={18} />}
+              </button>
+            )}
+
+            {/* Cycle camera source switch */}
+            {isVideoCall && devices.filter(d => d.kind === 'videoinput').length >= 2 && (
+              <button
+                onClick={handleSwitchCamera}
+                style={{
+                  border: 'none',
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  backgroundColor: '#1e242b',
                   color: '#fff',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
-                title={videoMuted ? 'Enable camera' : 'Disable camera'}
+                title="Switch Camera Device"
               >
-                {videoMuted ? <VideoOff size={20} /> : <Video size={20} />}
+                <RefreshCw size={18} />
               </button>
             )}
 
@@ -486,19 +853,43 @@ function CallModal({
                 onClick={isSharingScreen ? stopScreenShare : startScreenShare}
                 style={{
                   border: 'none',
-                  width: '48px',
-                  height: '48px',
+                  width: '46px',
+                  height: '46px',
                   borderRadius: '50%',
-                  backgroundColor: isSharingScreen ? 'var(--primary)' : '#2f353d',
+                  backgroundColor: isSharingScreen ? 'var(--primary)' : '#1e242b',
                   color: '#fff',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
                 }}
                 title={isSharingScreen ? 'Stop screen sharing' : 'Share screen'}
               >
-                {isSharingScreen ? <Monitor size={20} /> : <Tv size={20} />}
+                {isSharingScreen ? <Monitor size={18} style={{ color: '#fff' }} /> : <Tv size={18} />}
+              </button>
+            )}
+
+            {/* Local Video Mirroring Toggle (only for video call type) */}
+            {isVideoCall && (
+              <button
+                onClick={() => setIsMirrored(!isMirrored)}
+                style={{
+                  border: 'none',
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  backgroundColor: isMirrored ? 'var(--primary)' : '#1e242b',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+                title={isMirrored ? 'Disable mirrored local preview' : 'Enable mirrored local preview'}
+              >
+                <Camera size={18} />
               </button>
             )}
 
@@ -508,20 +899,20 @@ function CallModal({
                 onClick={() => setBackgroundBlur(!backgroundBlur)}
                 style={{
                   border: 'none',
-                  width: '48px',
-                  height: '48px',
+                  width: '46px',
+                  height: '46px',
                   borderRadius: '50%',
-                  backgroundColor: backgroundBlur ? 'var(--primary)' : '#2f353d',
+                  backgroundColor: backgroundBlur ? 'var(--primary)' : '#1e242b',
                   color: '#fff',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: backgroundBlur ? '0 0 10px var(--primary-light)' : 'none'
+                  transition: 'all 0.2s'
                 }}
                 title={backgroundBlur ? 'Disable background blur' : 'Enable background blur'}
               >
-                <Camera size={20} />
+                <Sliders size={18} />
               </button>
             )}
 
@@ -530,20 +921,20 @@ function CallModal({
               onClick={() => setNoiseCancellation(!noiseCancellation)}
               style={{
                 border: 'none',
-                width: '48px',
-                height: '48px',
+                width: '46px',
+                height: '46px',
                 borderRadius: '50%',
-                backgroundColor: noiseCancellation ? 'var(--primary)' : '#2f353d',
+                backgroundColor: noiseCancellation ? 'var(--primary)' : '#1e242b',
                 color: '#fff',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: noiseCancellation ? '0 0 10px var(--primary-light)' : 'none'
+                transition: 'all 0.2s'
               }}
-              title={noiseCancellation ? 'Disable AI Noise Cancellation' : 'Enable AI Noise Cancellation'}
+              title={noiseCancellation ? 'Disable Noise Cancellation' : 'Enable Noise Cancellation'}
             >
-              {noiseCancellation ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              {noiseCancellation ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
 
             {/* Call Recording toggle */}
@@ -551,20 +942,41 @@ function CallModal({
               onClick={() => setIsRecording(!isRecording)}
               style={{
                 border: 'none',
-                width: '48px',
-                height: '48px',
+                width: '46px',
+                height: '46px',
                 borderRadius: '50%',
-                backgroundColor: isRecording ? 'var(--danger)' : '#2f353d',
+                backgroundColor: isRecording ? 'var(--danger)' : '#1e242b',
                 color: '#fff',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: isRecording ? '0 0 12px rgba(239, 68, 68, 0.4)' : 'none'
+                transition: 'all 0.2s'
               }}
-              title={isRecording ? 'Stop Call Recording' : 'Start Call Recording'}
+              title={isRecording ? 'Stop Recording' : 'Start Recording'}
             >
-              <Radio size={20} className={isRecording ? 'animate-pulse' : ''} />
+              <Radio size={18} className={isRecording ? 'animate-pulse' : ''} />
+            </button>
+
+            {/* Settings gear toggle */}
+            <button
+              onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+              style={{
+                border: 'none',
+                width: '46px',
+                height: '46px',
+                borderRadius: '50%',
+                backgroundColor: showSettingsPanel ? 'var(--primary)' : '#1e242b',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              title="Call Settings"
+            >
+              <Settings size={18} />
             </button>
 
             {/* Hangup Red button */}
@@ -572,15 +984,17 @@ function CallModal({
               onClick={onHangup}
               style={{
                 border: 'none',
-                width: '48px',
-                height: '48px',
+                width: '52px',
+                height: '52px',
                 borderRadius: '50%',
                 backgroundColor: 'var(--danger)',
                 color: '#fff',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',
+                transition: 'all 0.2s'
               }}
               title="Hangup / End call"
             >
@@ -599,6 +1013,33 @@ const getInitials = (name) => {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].substring(0, 2);
   return (parts[0][0] + parts[1][0]).substring(0, 2);
+};
+
+// Internal Form Styling mapping
+const formRowStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+  textAlign: 'left'
+};
+
+const formLabelStyle = {
+  fontSize: '10px',
+  fontWeight: 700,
+  color: 'var(--text-secondary)',
+  textTransform: 'uppercase'
+};
+
+const formInputStyle = {
+  padding: '8px 12px',
+  borderRadius: '8px',
+  border: '1.5px solid var(--border-glass)',
+  backgroundColor: 'var(--bg-app)',
+  color: 'var(--text-primary)',
+  fontSize: '12px',
+  outline: 'none',
+  width: '100%',
+  boxSizing: 'border-box'
 };
 
 export default CallModal;

@@ -129,6 +129,55 @@ module.exports = function registerSocketHandlers(io, state) {
     }
   };
 
+  const emitSelfProfileUpdate = async (userId) => {
+    try {
+      const u = await User.findOne({ userId });
+      if (!u) return;
+
+      const sId = connectedUsers.get(userId);
+      if (!sId) return;
+
+      io.to(sId).emit('profile_updated', {
+        user: {
+          id: u.userId,
+          username: u.username,
+          bio: u.bio,
+          statusMsg: u.statusMsg,
+          profilePhoto: u.profilePhoto,
+          coverPhoto: u.coverPhoto,
+          customThemeColor: u.customThemeColor,
+          lastSeenSetting: u.lastSeenSetting,
+          onlineVisibility: u.onlineVisibility,
+          profilePhotoVisibility: u.profilePhotoVisibility,
+          displayName: u.displayName,
+          mobileNumber: u.mobileNumber,
+          aboutVisibility: u.aboutVisibility,
+          statusVisibility: u.statusVisibility,
+          readReceipts: u.readReceipts,
+          hideTyping: u.hideTyping,
+          hideRecording: u.hideRecording,
+          hideScreenshot: u.hideScreenshot,
+          isGhostMode: u.isGhostMode,
+          isVerified: u.isVerified,
+          chatWallpaper: u.chatWallpaper,
+          fontSize: u.fontSize,
+          blockedUsers: u.blockedUsers || [],
+          mutedUsers: u.mutedUsers || [],
+          contacts: u.contacts || [],
+          sentRequests: u.sentRequests || [],
+          receivedRequests: u.receivedRequests || [],
+          pinnedChats: u.pinnedChats || [],
+          mutedChats: u.mutedChats || [],
+          archivedChats: u.archivedChats || [],
+          isMutedGlobally: u.isMutedGlobally,
+          premiumTier: u.premiumTier || 'free'
+        }
+      });
+    } catch (e) {
+      console.error('Error emitting self profile update:', e);
+    }
+  };
+
   const broadcastUserList = async () => {
     try {
       const allUsers = await User.find({});
@@ -142,8 +191,6 @@ module.exports = function registerSocketHandlers(io, state) {
           username: u.username,
           status: isInvisible ? 'offline' : u.status,
           lastSeen: hideLastSeen ? null : (u.lastSeen ? u.lastSeen.toISOString() : null),
-          blockedUsers: u.blockedUsers,
-          mutedUsers: u.mutedUsers,
           isAdmin: u.isAdmin,
           isMutedGlobally: u.isMutedGlobally,
           bio: u.bio,
@@ -151,26 +198,9 @@ module.exports = function registerSocketHandlers(io, state) {
           profilePhoto: u.profilePhoto,
           coverPhoto: u.coverPhoto,
           customThemeColor: u.customThemeColor,
-          lastSeenSetting: u.lastSeenSetting,
-          onlineVisibility: u.onlineVisibility,
-          contacts: u.contacts || [],
-          sentRequests: u.sentRequests || [],
-          receivedRequests: u.receivedRequests || [],
           displayName: u.displayName,
-          mobileNumber: u.mobileNumber,
-          aboutVisibility: u.aboutVisibility,
-          statusVisibility: u.statusVisibility,
-          readReceipts: u.readReceipts,
-          hideTyping: u.hideTyping,
-          hideRecording: u.hideRecording,
-          hideScreenshot: u.hideScreenshot,
-          isGhostMode: u.isGhostMode,
           isVerified: u.isVerified,
-          chatWallpaper: u.chatWallpaper,
-          fontSize: u.fontSize,
-          pinnedChats: u.pinnedChats || [],
-          mutedChats: u.mutedChats || [],
-          archivedChats: u.archivedChats || []
+          premiumTier: u.premiumTier || 'free'
         };
       });
       io.emit(SOCKET_EVENTS.USER_LIST_UPDATE, userList);
@@ -286,15 +316,6 @@ module.exports = function registerSocketHandlers(io, state) {
 
         // Query message history where target is in user joined rooms or direct messages related to user
         const allUserRoomIds = activeRooms.map(r => r.id);
-        const relatedMessages = await Message.find({
-          $or: [
-            { roomId: { $in: allUserRoomIds } },
-            { senderId: currentUserId },
-            { recipientId: currentUserId },
-            { senderId: 'system' }
-          ]
-        }).sort({ timestamp: 1 });
-
         socket.emit(SOCKET_EVENTS.USER_LOGIN, {
           success: true,
           user: {
@@ -344,7 +365,35 @@ module.exports = function registerSocketHandlers(io, state) {
             notes: r.notes,
             tasks: r.tasks
           })),
-          messages: relatedMessages.map(m => ({
+          messages: []
+        });
+
+        for (const room of defaultRooms) {
+          sendSystemNotification(room.id, `${currentUser.username} joined Cyber Chat`, { type: 'join', actor: currentUser.username });
+        }
+
+        logActivity('USER_JOIN', `${currentUser.username} logged in securely`);
+        broadcastUserList();
+        broadcastRoomList();
+      } catch (err) {
+        console.error('USER_LOGIN Socket Error:', err);
+        socket.emit(SOCKET_EVENTS.USER_LOGIN, { success: false, error: 'Database synchronization failed' });
+      }
+    });
+
+    // On-demand DM history retrieval
+    socket.on('get_dm_history', async ({ targetUserId }) => {
+      try {
+        const dmHistory = await Message.find({
+          $or: [
+            { senderId: currentUserId, recipientId: targetUserId, roomId: null },
+            { senderId: targetUserId, recipientId: currentUserId, roomId: null }
+          ]
+        }).sort({ timestamp: 1 });
+
+        socket.emit('dm_history', {
+          targetUserId,
+          messages: dmHistory.map(m => ({
             id: m.id,
             senderId: m.senderId,
             recipientId: m.recipientId,
@@ -364,17 +413,8 @@ module.exports = function registerSocketHandlers(io, state) {
             pollData: m.pollData
           }))
         });
-
-        for (const room of defaultRooms) {
-          sendSystemNotification(room.id, `${currentUser.username} joined Cyber Chat`, { type: 'join', actor: currentUser.username });
-        }
-
-        logActivity('USER_JOIN', `${currentUser.username} logged in securely`);
-        broadcastUserList();
-        broadcastRoomList();
       } catch (err) {
-        console.error('USER_LOGIN Socket Error:', err);
-        socket.emit(SOCKET_EVENTS.USER_LOGIN, { success: false, error: 'Database synchronization failed' });
+        console.error('get_dm_history socket error:', err);
       }
     });
 
@@ -1348,7 +1388,7 @@ module.exports = function registerSocketHandlers(io, state) {
       if (sId) io.to(sId).emit(SOCKET_EVENTS.ICE_CANDIDATE, { from: currentUserId, candidate });
     });
 
-    socket.on(SOCKET_EVENTS.END_CALL, async ({ to, callId, duration, type, recordingUrl }) => {
+    socket.on(SOCKET_EVENTS.END_CALL, async ({ to, callId, duration, type, recordingUrl, status }) => {
       const sId = connectedUsers.get(to);
       if (sId) {
         io.to(sId).emit(SOCKET_EVENTS.END_CALL, { from: currentUserId });
@@ -1362,7 +1402,7 @@ module.exports = function registerSocketHandlers(io, state) {
           callerName: currentUser.username,
           receiverId: to,
           type: type || 'audio',
-          status: 'answered',
+          status: status || (duration > 0 ? 'answered' : 'missed'),
           duration: duration || 0,
           recordingUrl: recordingUrl || null,
           startedAt: new Date(Date.now() - (duration || 0) * 1000),
@@ -1580,22 +1620,8 @@ module.exports = function registerSocketHandlers(io, state) {
 
         await profile.save();
 
-        socket.emit(SOCKET_EVENTS.USER_LOGIN, {
-          success: true,
-          user: {
-            id: profile.userId,
-            username: profile.username,
-            blockedUsers: profile.blockedUsers,
-            mutedUsers: profile.mutedUsers,
-            isAdmin: profile.isAdmin,
-            isMutedGlobally: profile.isMutedGlobally,
-            bio: profile.bio,
-            statusMsg: profile.statusMsg,
-            customThemeColor: profile.customThemeColor,
-            lastSeenSetting: profile.lastSeenSetting,
-            onlineVisibility: profile.onlineVisibility
-          }
-        });
+        await emitSelfProfileUpdate(userId);
+        await emitSelfProfileUpdate(targetUserId);
         broadcastUserList();
       } catch (e) {
         console.error(e);
@@ -1619,22 +1645,8 @@ module.exports = function registerSocketHandlers(io, state) {
 
         await profile.save();
 
-        socket.emit(SOCKET_EVENTS.USER_LOGIN, {
-          success: true,
-          user: {
-            id: profile.userId,
-            username: profile.username,
-            blockedUsers: profile.blockedUsers,
-            mutedUsers: profile.mutedUsers,
-            isAdmin: profile.isAdmin,
-            isMutedGlobally: profile.isMutedGlobally,
-            bio: profile.bio,
-            statusMsg: profile.statusMsg,
-            customThemeColor: profile.customThemeColor,
-            lastSeenSetting: profile.lastSeenSetting,
-            onlineVisibility: profile.onlineVisibility
-          }
-        });
+        await emitSelfProfileUpdate(userId);
+        await emitSelfProfileUpdate(targetId);
         broadcastUserList();
       } catch (e) {
         console.error(e);
@@ -1705,7 +1717,8 @@ module.exports = function registerSocketHandlers(io, state) {
         }
 
         logActivity('CONTACT_REQ_SEND', `Contact request sent from ${sender.username} to ${target.username}`);
-        await broadcastUserList();
+        await emitSelfProfileUpdate(senderId);
+        await emitSelfProfileUpdate(targetUserId);
       } catch (err) {
         console.error('send_contact_request error:', err);
       }
@@ -1737,7 +1750,8 @@ module.exports = function registerSocketHandlers(io, state) {
         await target.save();
 
         logActivity('CONTACT_REQ_ACCEPT', `Contact request accepted between ${user.username} and ${target.username}`);
-        await broadcastUserList();
+        await emitSelfProfileUpdate(userId);
+        await emitSelfProfileUpdate(targetUserId);
       } catch (err) {
         console.error('accept_contact_request error:', err);
       }
@@ -1759,7 +1773,8 @@ module.exports = function registerSocketHandlers(io, state) {
         await target.save();
 
         logActivity('CONTACT_REQ_DECLINE', `Contact request from ${target.username} declined by ${user.username}`);
-        await broadcastUserList();
+        await emitSelfProfileUpdate(userId);
+        await emitSelfProfileUpdate(targetUserId);
       } catch (err) {
         console.error('decline_contact_request error:', err);
       }
@@ -1781,7 +1796,8 @@ module.exports = function registerSocketHandlers(io, state) {
         await target.save();
 
         logActivity('CONTACT_REQ_CANCEL', `Contact request to ${target.username} cancelled by ${user.username}`);
-        await broadcastUserList();
+        await emitSelfProfileUpdate(userId);
+        await emitSelfProfileUpdate(targetUserId);
       } catch (err) {
         console.error('cancel_contact_request error:', err);
       }
@@ -1802,7 +1818,8 @@ module.exports = function registerSocketHandlers(io, state) {
         await target.save();
 
         logActivity('CONTACT_REMOVE', `Contact ${target.username} removed by ${user.username}`);
-        await broadcastUserList();
+        await emitSelfProfileUpdate(userId);
+        await emitSelfProfileUpdate(targetUserId);
       } catch (err) {
         console.error('remove_contact error:', err);
       }
@@ -2008,8 +2025,6 @@ module.exports = function registerSocketHandlers(io, state) {
           mutedChats: profile.mutedChats || [],
           archivedChats: profile.archivedChats || []
         });
-
-        broadcastUserList();
       } catch (err) {
         console.error('toggle_chat_status error:', err);
       }
