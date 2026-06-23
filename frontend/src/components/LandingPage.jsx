@@ -1,6 +1,7 @@
 // frontend/src/components/LandingPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
+import * as THREE from 'three';
 import { 
   Shield, 
   Video, 
@@ -20,22 +21,185 @@ import {
   Users,
   Compass,
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  Menu,
+  X
 } from 'lucide-react';
 
 function LandingPage({ onLaunch, theme, toggleTheme, user }) {
   const [activePage, setActivePage] = useState('home');
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const containerRef = useRef(null);
   const heroMockupRef = useRef(null);
   const titleRef = useRef(null);
   const cardsRef = useRef([]);
+  const threeContainerRef = useRef(null);
 
   // Reset card refs array on every render
   cardsRef.current = [];
 
+  // Resize handler for mobile status
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Three.js Background canvas animation effect
+  useEffect(() => {
+    if (!threeContainerRef.current) return;
+
+    let width = threeContainerRef.current.clientWidth;
+    let height = threeContainerRef.current.clientHeight;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, width / height, 0.1, 1000);
+    camera.position.z = 120;
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    threeContainerRef.current.innerHTML = '';
+    threeContainerRef.current.appendChild(renderer.domElement);
+
+    // Dynamic Starfield Particles
+    const particleCount = 1000;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+
+    const themeColors = [
+      new THREE.Color('#00a884'), // Teal primary
+      new THREE.Color('#3b82f6'), // Blue secondary
+      new THREE.Color('#ec4899')  // Pink tertiary
+    ];
+
+    for (let i = 0; i < particleCount; i++) {
+      const radius = 60 + Math.random() * 90;
+      const u1 = Math.random();
+      const u2 = Math.random();
+      const theta = u1 * Math.PI * 2;
+      const phi = Math.acos((2 * u2) - 1);
+
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = radius * Math.cos(phi);
+
+      const col = themeColors[Math.floor(Math.random() * themeColors.length)];
+      colors[i * 3] = col.r;
+      colors[i * 3 + 1] = col.g;
+      colors[i * 3 + 2] = col.b;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 16, 16);
+    const texture = new THREE.CanvasTexture(canvas);
+
+    const material = new THREE.PointsMaterial({
+      size: 2.5,
+      map: texture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      vertexColors: true
+    });
+
+    const starField = new THREE.Points(geometry, material);
+    scene.add(starField);
+
+    const sphereGeometry = new THREE.IcosahedronGeometry(40, 2);
+    const sphereMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00a884,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.12,
+      blending: THREE.AdditiveBlending
+    });
+    const centralSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    scene.add(centralSphere);
+
+    let targetMouseX = 0;
+    let targetMouseY = 0;
+    let currentMouseX = 0;
+    let currentMouseY = 0;
+
+    const handleMouseMove = (e) => {
+      targetMouseX = (e.clientX - window.innerWidth / 2) * 0.04;
+      targetMouseY = (e.clientY - window.innerHeight / 2) * 0.04;
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+
+    let frameId;
+    const animate = () => {
+      starField.rotation.y += 0.0008;
+      starField.rotation.x += 0.0004;
+
+      centralSphere.rotation.y -= 0.0015;
+      centralSphere.rotation.z += 0.0008;
+
+      currentMouseX += (targetMouseX - currentMouseX) * 0.05;
+      currentMouseY += (targetMouseY - currentMouseY) * 0.05;
+
+      camera.position.x = currentMouseX;
+      camera.position.y = -currentMouseY;
+      camera.lookAt(scene.position);
+
+      renderer.render(scene, camera);
+      frameId = requestAnimationFrame(animate);
+    };
+    animate();
+
+    const handleResize = () => {
+      if (!threeContainerRef.current) return;
+      const w = threeContainerRef.current.clientWidth;
+      const h = threeContainerRef.current.clientHeight;
+
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(frameId);
+
+      geometry.dispose();
+      material.dispose();
+      sphereGeometry.dispose();
+      sphereMaterial.dispose();
+      renderer.dispose();
+      
+      if (threeContainerRef.current) {
+        threeContainerRef.current.innerHTML = '';
+      }
+    };
+  }, []);
+
   // Page Scroll Handler
   const navigateToPage = (pageName) => {
     setActivePage(pageName);
+    setMenuOpen(false); // Close mobile navbar menu if open
     const element = document.getElementById(pageName);
     if (element) {
       const navOffset = 80;
@@ -265,7 +429,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
   ];
 
   const renderHome = () => (
-    <div style={{ padding: '60px 8%', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+    <div style={{ padding: isMobile ? '40px 16px' : '60px 8%', textAlign: 'center', position: 'relative', zIndex: 1 }}>
       <div 
         className="landing-hero-tag"
         style={{
@@ -295,7 +459,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
           lineHeight: 1.15,
           color: '#fff',
           maxWidth: '900px',
-          margin: '0 auto 24px',
+          margin: isMobile ? '0 auto 16px' : '0 auto 24px',
           fontFamily: "'Outfit', sans-serif"
         }}
       >
@@ -309,10 +473,10 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
       <p 
         className="landing-hero-desc"
         style={{
-          fontSize: '18px',
+          fontSize: isMobile ? '15px' : '18px',
           color: '#94a3b8',
           maxWidth: '650px',
-          margin: '0 auto 40px',
+          margin: isMobile ? '0 auto 24px' : '0 auto 40px',
           lineHeight: 1.6
         }}
       >
@@ -323,10 +487,14 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
         className="landing-hero-ctas"
         style={{
           display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
           alignItems: 'center',
           justifyContent: 'center',
           gap: '16px',
-          marginBottom: '80px'
+          width: '100%',
+          maxWidth: isMobile ? '320px' : 'none',
+          margin: '0 auto 40px',
+          marginBottom: isMobile ? '40px' : '80px'
         }}
       >
         <button 
@@ -344,7 +512,9 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
             boxShadow: '0 8px 30px rgba(0, 168, 132, 0.4)',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            justifyContent: 'center',
+            gap: '10px',
+            width: isMobile ? '100%' : 'auto'
           }}
         >
           {user ? 'Enter Chat' : 'Get In / Register'} <ArrowRight size={18} />
@@ -361,7 +531,9 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
             fontSize: '16px',
             fontWeight: 700,
             cursor: 'pointer',
-            transition: 'all 0.3s ease'
+            transition: 'all 0.3s ease',
+            width: isMobile ? '100%' : 'auto',
+            textAlign: 'center'
           }}
         >
           Explore Features
@@ -385,7 +557,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
           style={{
             width: '100%',
             maxWidth: '920px',
-            height: '500px',
+            height: isMobile ? '350px' : '500px',
             borderRadius: '24px',
             boxShadow: '0 30px 60px rgba(0,0,0,0.5), 0 0 100px rgba(0, 168, 132, 0.1)',
             border: '1.5px solid rgba(255, 255, 255, 0.1)',
@@ -402,27 +574,27 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '14px 24px',
+            padding: isMobile ? '10px 16px' : '14px 24px',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             background: 'rgba(0,0,0,0.2)'
           }}>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }} />
-              <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#eab308' }} />
-              <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444' }} />
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#eab308' }} />
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
             </div>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, letterSpacing: '0.05em' }}>
-              WORKSPACE INTERACTIVE SIMULATOR (CC)
+            <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, letterSpacing: '0.05em' }}>
+              {isMobile ? 'SIMULATOR (CC)' : 'WORKSPACE INTERACTIVE SIMULATOR (CC)'}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00a884', fontSize: '11px', fontWeight: 700 }}>
-              <span className="ping-pulse ping-excellent" style={{ width: '6px', height: '6px' }} /> SECURE
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00a884', fontSize: '10px', fontWeight: 700 }}>
+              <span className="ping-pulse ping-excellent" style={{ width: '5px', height: '5px' }} /> SECURE
             </div>
           </div>
 
           {/* Split layout inside mockup */}
           <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
             {/* Mock Sidebar */}
-            <div style={{ width: '250px', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '16px', background: 'rgba(0,0,0,0.1)' }}>
+            <div style={{ width: '250px', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '16px', background: 'rgba(0,0,0,0.1)', display: isMobile ? 'none' : 'block' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ height: '36px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: '12px', color: '#94a3b8' }}>
                   🔍 Search chats...
@@ -447,7 +619,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
             </div>
 
             {/* Mock Chat Area */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: isMobile ? '12px' : '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px', marginBottom: '16px' }}>
                 <span style={{ fontWeight: 700, color: '#fff' }}># global-lounge</span>
                 <span style={{ fontSize: '11px', color: '#64748b' }}>Active members: 42</span>
@@ -461,7 +633,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
                       <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>Vikas Prajapat</span>
                       <span style={{ fontSize: '9px', color: '#64748b' }}>10:24 PM</span>
                     </div>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px 14px', borderRadius: '0 12px 12px 12px', fontSize: '13px', color: '#cbd5e1', marginTop: '4px', maxWidth: '380px' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', padding: isMobile ? '8px 10px' : '10px 14px', borderRadius: '0 12px 12px 12px', fontSize: isMobile ? '11px' : '13px', color: '#cbd5e1', marginTop: '4px', maxWidth: isMobile ? '220px' : '380px' }}>
                       Can someone summarize the status updates discussed in the dev channel today? @ai
                     </div>
                   </div>
@@ -474,7 +646,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
                       <span style={{ fontSize: '12px', fontWeight: 700, color: '#00a884' }}>CyberAI Assistant</span>
                       <span style={{ fontSize: '9px', color: '#64748b' }}>10:24 PM</span>
                     </div>
-                    <div style={{ background: 'rgba(0, 168, 132, 0.08)', border: '1px solid rgba(0, 168, 132, 0.2)', padding: '10px 14px', borderRadius: '0 12px 12px 12px', fontSize: '13px', color: '#00a884', marginTop: '4px', maxWidth: '380px', lineHeight: '1.4' }}>
+                    <div style={{ background: 'rgba(0, 168, 132, 0.08)', border: '1px solid rgba(0, 168, 132, 0.2)', padding: isMobile ? '8px 10px' : '10px 14px', borderRadius: '0 12px 12px 12px', fontSize: isMobile ? '11px' : '13px', color: '#00a884', marginTop: '4px', maxWidth: isMobile ? '220px' : '380px', lineHeight: '1.4' }}>
                       🤖 **CyberAI digest**:<br/>
                       - **Audio Modules**: Fully configured and synced.<br/>
                       - **Authentication**: Passwordless profiles operational.<br/>
@@ -486,8 +658,8 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
 
               {/* Input block inside mockup */}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px', display: 'flex', gap: '10px' }}>
-                <div style={{ flex: 1, height: '38px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '13px', color: '#64748b' }}>
-                  Type your secure message...
+                <div style={{ flex: 1, height: '38px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', padding: isMobile ? '0 10px' : '0 14px', fontSize: isMobile ? '11px' : '13px', color: '#64748b' }}>
+                  {isMobile ? 'Type message...' : 'Type your secure message...'}
                 </div>
                 <button style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#00a884', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#050a0e', fontWeight: 'bold' }}>
                   ➔
@@ -967,10 +1139,25 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
         overflowX: 'hidden',
         position: 'relative',
         paddingBottom: '80px',
-        paddingTop: '80px',
+        paddingTop: isMobile ? '70px' : '80px',
         boxSizing: 'border-box'
       }}
     >
+      {/* 3D Interactive Three.js Background Canvas */}
+      <div 
+        ref={threeContainerRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 0,
+          pointerEvents: 'none',
+          opacity: 0.55
+        }}
+      />
+
       {/* Decorative Blur Spheres */}
       <div 
         className="ambient-sphere-1"
@@ -1010,7 +1197,7 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '20px 8%',
+          padding: isMobile ? '12px 16px' : '20px 8%',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           backdropFilter: 'blur(16px)',
           position: 'fixed',
@@ -1030,21 +1217,108 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
             src="/logo.png" 
             alt="CyberChar Logo" 
             style={{
-              width: '38px',
-              height: '38px',
+              width: isMobile ? '32px' : '38px',
+              height: isMobile ? '32px' : '38px',
               borderRadius: '10px',
               border: '1.5px solid rgba(0, 168, 132, 0.3)',
               boxShadow: '0 0 15px rgba(0, 168, 132, 0.2)',
               objectFit: 'cover'
             }} 
           />
-          <span style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '0.05em', color: '#fff' }}>
+          <span style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: 900, letterSpacing: '0.05em', color: '#fff' }}>
             CYBER<span style={{ color: '#00a884' }}>CHAR</span>
           </span>
         </div>
 
-        {/* Tab links */}
-        <div style={{ display: 'flex', gap: '28px', alignItems: 'center' }} className="landing-nav-links">
+        {/* Tab links (hidden on mobile) */}
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: '28px', alignItems: 'center' }} className="landing-nav-links">
+            {['Home', 'Features', 'Security', 'Tech Stack', 'Pricing', 'About'].map((tab) => {
+              const pageId = tab === 'Tech Stack' ? 'tech' : tab.toLowerCase();
+              const isActive = activePage === pageId;
+              return (
+                <span
+                  key={tab}
+                  onClick={() => navigateToPage(pageId)}
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: isActive ? 800 : 500,
+                    color: isActive ? '#00a884' : '#94a3b8',
+                    cursor: 'pointer',
+                    transition: 'color 0.2s ease',
+                    borderBottom: isActive ? '2px solid #00a884' : '2px solid transparent',
+                    paddingBottom: '4px',
+                    position: 'relative'
+                  }}
+                >
+                  {tab}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Action / Hamburger button on mobile */}
+        {isMobile ? (
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            style={{
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '8px',
+              color: '#fff',
+              padding: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.03)'
+            }}
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        ) : (
+          <button 
+            onClick={onLaunch}
+            className="neon-glow-btn"
+            style={{
+              padding: '10px 22px',
+              borderRadius: '30px',
+              backgroundColor: '#00a884',
+              color: '#050a0e',
+              border: 'none',
+              fontSize: '14px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 20px rgba(0, 168, 132, 0.4)'
+            }}
+          >
+            {user ? 'Go to Chat' : 'Get In / Register'} <ArrowRight size={15} />
+          </button>
+        )}
+      </nav>
+
+      {/* Mobile Menu Dropdown Panel */}
+      {isMobile && menuOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: '57px', // offset navbar height
+            left: 0,
+            right: 0,
+            background: 'rgba(5, 10, 14, 0.96)',
+            backdropFilter: 'blur(20px)',
+            borderBottom: '1.5px solid rgba(0, 168, 132, 0.2)',
+            padding: '24px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '18px',
+            zIndex: 99
+          }}
+        >
           {['Home', 'Features', 'Security', 'Tech Stack', 'Pricing', 'About'].map((tab) => {
             const pageId = tab === 'Tech Stack' ? 'tech' : tab.toLowerCase();
             const isActive = activePage === pageId;
@@ -1053,43 +1327,44 @@ function LandingPage({ onLaunch, theme, toggleTheme, user }) {
                 key={tab}
                 onClick={() => navigateToPage(pageId)}
                 style={{
-                  fontSize: '14px',
+                  fontSize: '16px',
                   fontWeight: isActive ? 800 : 500,
-                  color: isActive ? '#00a884' : '#94a3b8',
+                  color: isActive ? '#00a884' : '#e2e8f0',
                   cursor: 'pointer',
-                  transition: 'color 0.2s ease',
-                  borderBottom: isActive ? '2px solid #00a884' : '2px solid transparent',
-                  paddingBottom: '4px',
-                  position: 'relative'
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: isActive ? 'rgba(0,168,132,0.08)' : 'transparent',
+                  transition: 'all 0.2s'
                 }}
               >
                 {tab}
               </span>
             );
           })}
+          <button 
+            onClick={() => { setMenuOpen(false); onLaunch(); }}
+            className="neon-glow-btn"
+            style={{
+              padding: '14px',
+              borderRadius: '12px',
+              backgroundColor: '#00a884',
+              color: '#050a0e',
+              border: 'none',
+              fontSize: '15px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 16px rgba(0, 168, 132, 0.3)',
+              marginTop: '10px'
+            }}
+          >
+            {user ? 'Go to Chat' : 'Get In / Register'} <ArrowRight size={16} />
+          </button>
         </div>
-
-        <button 
-          onClick={onLaunch}
-          className="neon-glow-btn"
-          style={{
-            padding: '10px 22px',
-            borderRadius: '30px',
-            backgroundColor: '#00a884',
-            color: '#050a0e',
-            border: 'none',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: '0 4px 20px rgba(0, 168, 132, 0.4)'
-          }}
-        >
-          {user ? 'Go to Chat' : 'Get In / Register'} <ArrowRight size={15} />
-        </button>
-      </nav>
+      )}
 
       {/* Main Render Page Content Wrapper */}
       <div className="page-content-wrapper" style={{ opacity: 0 }}>

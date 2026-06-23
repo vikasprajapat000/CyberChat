@@ -295,10 +295,16 @@ function Sidebar({
       const searchWords = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
       all = all.filter(c => {
         const name = (c.name || '').toLowerCase();
+        const nameWords = name.split(/\s+/).filter(Boolean);
         const id = (c.id || '').toLowerCase();
         const username = c.type === 'direct' ? (c.username || '').toLowerCase() : '';
-        const combined = `${name} ${id} ${username}`;
-        return searchWords.every(word => combined.includes(word));
+
+        return searchWords.every(word => {
+          if (username.startsWith(word)) return true;
+          if (id.startsWith(word)) return true;
+          if (nameWords.some(nw => nw.startsWith(word))) return true;
+          return false;
+        });
       });
     }
 
@@ -334,7 +340,7 @@ function Sidebar({
   const unreadChats = conversations.filter(c => c.unread > 0 && !user.pinnedChats?.includes(c.id));
   const recentChats = conversations.filter(c => !user.pinnedChats?.includes(c.id) && c.unread === 0);
 
-  // Search discovery users
+  // Search discovery users - word prefix-based case-insensitive matching
   const discoverUsers = onlineUsers.filter(u => {
     if (u.id === user.id || (user.contacts || []).includes(u.id)) return false;
     const searchWords = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
@@ -342,8 +348,14 @@ function Sidebar({
     const username = (u.username || '').toLowerCase();
     const id = (u.id || '').toLowerCase();
     const displayName = (u.displayName || '').toLowerCase();
-    const combined = `${username} ${id} ${displayName}`;
-    return searchWords.every(word => combined.includes(word));
+    const displayNameWords = displayName.split(/\s+/).filter(Boolean);
+
+    return searchWords.every(word => {
+      if (username.startsWith(word)) return true;
+      if (id.startsWith(word)) return true;
+      if (displayNameWords.some(dnw => dnw.startsWith(word))) return true;
+      return false;
+    });
   });
 
   const incomingRequestsList = onlineUsers.filter(u =>
@@ -920,12 +932,12 @@ function Sidebar({
         {searchTerm.trim().length > 0 && (
           <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-glass)', paddingTop: '16px' }}>
             <h3 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 10px 12px', letterSpacing: '0.05em', margin: 0 }}>
-              Global Network Finder ({discoverUsers.length})
+              Global Network Finder ({discoverUsers.slice(0, 3).length})
             </h3>
             {discoverUsers.length === 0 ? (
               <div style={{ padding: '12px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>No users matching "{searchTerm}"</div>
             ) : (
-              discoverUsers.map(u => {
+              discoverUsers.slice(0, 3).map(u => {
                 const hasSent = (user.sentRequests || []).includes(u.id);
                 const hasReceived = (user.receivedRequests || []).includes(u.id);
 
