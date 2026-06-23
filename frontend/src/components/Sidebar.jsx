@@ -4,7 +4,8 @@ import {
   Search, LogOut, Volume2, VolumeX, Bell, BellOff,
   User, Hash, Circle, RefreshCw, X, ShieldAlert, Star,
   MessageSquare, LayoutGrid, Key, MoreHorizontal, Trash2, Pin, Archive, Map, Flame,
-  Camera, Bot, Globe, Tv, Crown, Lock, ChevronRight, MessageCircle, Plus, Sparkles
+  Camera, Bot, Globe, Tv, Crown, Lock, ChevronRight, MessageCircle, Plus, Sparkles,
+  UserPlus
 } from 'lucide-react';
 import MyProfileModal from './MyProfileModal';
 import SnapMapModal from './SnapMapModal';
@@ -44,6 +45,56 @@ function Sidebar({
   const [promptRoomId, setPromptRoomId] = useState(null);
   const [enteredPasscode, setEnteredPasscode] = useState('');
   const [passcodeError, setPasscodeError] = useState('');
+
+  // Show contact requests modal state
+  const [showRequestsModal, setShowRequestsModal] = useState(false);
+
+  // Long press to delete/clear chat functionality
+  const longPressTimers = React.useRef({});
+  const isLongPressActive = React.useRef({});
+
+  const startPress = (chat) => {
+    isLongPressActive.current[chat.id] = false;
+    if (longPressTimers.current[chat.id]) {
+      clearTimeout(longPressTimers.current[chat.id]);
+    }
+    longPressTimers.current[chat.id] = setTimeout(() => {
+      isLongPressActive.current[chat.id] = true;
+      handleLongPressDelete(chat);
+      delete longPressTimers.current[chat.id];
+    }, 700);
+  };
+
+  const endPress = (chat) => {
+    if (longPressTimers.current[chat.id]) {
+      clearTimeout(longPressTimers.current[chat.id]);
+      delete longPressTimers.current[chat.id];
+    }
+  };
+
+  const handleTouchMove = (chat) => {
+    if (longPressTimers.current[chat.id]) {
+      clearTimeout(longPressTimers.current[chat.id]);
+      delete longPressTimers.current[chat.id];
+    }
+  };
+
+  const handleLongPressDelete = (c) => {
+    if (!socket || !connected) return;
+    const confirmClear = window.confirm(`Are you sure you want to delete the chat with "${c.name}"? This will permanently remove all messages from the chat box and history.`);
+    if (confirmClear) {
+      socket.emit('clear_chat_history', {
+        roomId: c.type === 'group' ? c.id : null,
+        recipientId: c.type === 'direct' ? c.id : null,
+        senderId: user.id
+      });
+      // If the deleted chat is currently active, close/deselect it to empty the chat box
+      if (activeChat && activeChat.id === c.id) {
+        setActiveChat(null);
+      }
+      showToast('Chat history deleted', 'info');
+    }
+  };
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-4hvt.onrender.com');
 
@@ -216,7 +267,8 @@ function Sidebar({
 
     // 2. Group Rooms
     const groupChats = rooms.filter(room => 
-      room.members?.includes(user.id) || room.creatorId === user.id || room.creatorId === 'system'
+      (room.members?.includes(user.id) || room.creatorId === user.id || room.creatorId === 'system') &&
+      !['room_general', 'room_gaming', 'room_tech'].includes(room.id)
     ).map(room => {
       const chatMsgs = messages.filter(m => m.roomId === room.id);
       const lastMsg = chatMsgs[chatMsgs.length - 1];
@@ -240,7 +292,14 @@ function Sidebar({
 
     // Search filter
     if (searchTerm.trim()) {
-      all = all.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const searchWords = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      all = all.filter(c => {
+        const name = (c.name || '').toLowerCase();
+        const id = (c.id || '').toLowerCase();
+        const username = c.type === 'direct' ? (c.username || '').toLowerCase() : '';
+        const combined = `${name} ${id} ${username}`;
+        return searchWords.every(word => combined.includes(word));
+      });
     }
 
     // Filter chip selector
@@ -276,11 +335,16 @@ function Sidebar({
   const recentChats = conversations.filter(c => !user.pinnedChats?.includes(c.id) && c.unread === 0);
 
   // Search discovery users
-  const discoverUsers = onlineUsers.filter(u => 
-    u.id !== user.id && 
-    !(user.contacts || []).includes(u.id) &&
-    u.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const discoverUsers = onlineUsers.filter(u => {
+    if (u.id === user.id || (user.contacts || []).includes(u.id)) return false;
+    const searchWords = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (searchWords.length === 0) return false;
+    const username = (u.username || '').toLowerCase();
+    const id = (u.id || '').toLowerCase();
+    const displayName = (u.displayName || '').toLowerCase();
+    const combined = `${username} ${id} ${displayName}`;
+    return searchWords.every(word => combined.includes(word));
+  });
 
   const incomingRequestsList = onlineUsers.filter(u =>
     (user.receivedRequests || []).includes(u.id)
@@ -339,9 +403,20 @@ function Sidebar({
           return (
             <div
               key={chat.id}
-              onClick={() => chat.type === 'group' ? handleRoomClick(chat) : setActiveChat({ id: chat.id, name: chat.name, type: 'direct' })}
+              onClick={() => {
+                if (isLongPressActive.current[chat.id]) {
+                  isLongPressActive.current[chat.id] = false;
+                  return;
+                }
+                chat.type === 'group' ? handleRoomClick(chat) : setActiveChat({ id: chat.id, name: chat.name, type: 'direct' });
+              }}
               onMouseEnter={() => setHoveredId(chat.id)}
-              onMouseLeave={() => setHoveredId(null)}
+              onMouseLeave={() => { setHoveredId(null); endPress(chat); }}
+              onMouseDown={() => startPress(chat)}
+              onMouseUp={() => endPress(chat)}
+              onTouchStart={() => startPress(chat)}
+              onTouchEnd={() => endPress(chat)}
+              onTouchMove={() => handleTouchMove(chat)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -554,6 +629,20 @@ function Sidebar({
             <span style={{ position: 'absolute', top: '5px', right: '5px', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--danger)' }} />
           </button>
 
+          {/* Contact Requests Button */}
+          <button
+            onClick={() => setShowRequestsModal(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '6px', display: 'flex', borderRadius: '50%', transition: 'background 0.2s', position: 'relative' }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            title="Contact Requests"
+          >
+            <UserPlus size={18} />
+            {incomingRequestsList.length > 0 && (
+              <span style={{ position: 'absolute', top: '5px', right: '5px', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--danger)' }} />
+            )}
+          </button>
+
           <button
             onClick={() => setShowSnapMap(true)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '6px', display: 'flex', borderRadius: '50%', transition: 'background 0.2s' }}
@@ -669,8 +758,7 @@ function Sidebar({
         </div>
       )}
 
-      {/* C. Ambient sound player */}
-      <AmbientAudioWidget showToast={showToast} />
+      {/* C. Ambient sound player removed */}
 
       {/* D. Search and filters */}
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'var(--bg-panel)', borderBottom: '1px solid var(--border-glass)' }}>
@@ -783,13 +871,24 @@ function Sidebar({
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button
-                    onClick={() => socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id })}
+                    onClick={() => {
+                      socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id });
+                      onUserUpdate({
+                        receivedRequests: (user.receivedRequests || []).filter(id => id !== u.id),
+                        contacts: [...(user.contacts || []), u.id]
+                      });
+                    }}
                     style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
                   >
                     Accept
                   </button>
                   <button
-                    onClick={() => socket.emit('decline_contact_request', { userId: user.id, targetUserId: u.id })}
+                    onClick={() => {
+                      socket.emit('decline_contact_request', { userId: user.id, targetUserId: u.id });
+                      onUserUpdate({
+                        receivedRequests: (user.receivedRequests || []).filter(id => id !== u.id)
+                      });
+                    }}
                     style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
                   >
                     Ignore
@@ -857,7 +956,12 @@ function Sidebar({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Request Sent</span>
                           <button
-                            onClick={() => socket.emit('cancel_contact_request', { userId: user.id, targetUserId: u.id })}
+                            onClick={() => {
+                              socket.emit('cancel_contact_request', { userId: user.id, targetUserId: u.id });
+                              onUserUpdate({
+                                sentRequests: (user.sentRequests || []).filter(id => id !== u.id)
+                              });
+                            }}
                             style={{ backgroundColor: 'transparent', color: 'var(--danger)', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex' }}
                             title="Cancel Request"
                           >
@@ -866,14 +970,25 @@ function Sidebar({
                         </div>
                       ) : hasReceived ? (
                         <button
-                          onClick={() => socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id })}
+                          onClick={() => {
+                            socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id });
+                            onUserUpdate({
+                              receivedRequests: (user.receivedRequests || []).filter(id => id !== u.id),
+                              contacts: [...(user.contacts || []), u.id]
+                            });
+                          }}
                           style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
                         >
                           Accept
                         </button>
                       ) : (
                         <button
-                          onClick={() => socket.emit('send_contact_request', { senderId: user.id, targetUserId: u.id })}
+                          onClick={() => {
+                            socket.emit('send_contact_request', { senderId: user.id, targetUserId: u.id });
+                            onUserUpdate({
+                              sentRequests: [...(user.sentRequests || []), u.id]
+                            });
+                          }}
                           style={{
                             backgroundColor: 'transparent',
                             color: 'var(--primary)',
@@ -928,6 +1043,105 @@ function Sidebar({
           apiBase={BACKEND_URL}
           onClose={() => setShowNotifications(false)}
         />
+      )}
+
+      {/* Contact Requests Modal Overlay */}
+      {showRequestsModal && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(5, 10, 14, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-panel)',
+            border: '1.5px solid var(--border-glass)',
+            borderRadius: '16px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '340px',
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex',
+            flexDirection: 'column',
+            maxHeight: '80%'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justify: 'space-between', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <UserPlus size={18} style={{ color: 'var(--primary)' }} /> Contact Requests ({incomingRequestsList.length})
+              </h3>
+              <button 
+                onClick={() => setShowRequestsModal(false)} 
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px', borderRadius: '50%' }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--border-glass)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {incomingRequestsList.length === 0 ? (
+                <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <UserPlus size={36} opacity={0.2} style={{ margin: '0 auto 8px auto' }} />
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>No incoming requests</div>
+                </div>
+              ) : (
+                incomingRequestsList.map(u => (
+                  <div
+                    key={u.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--bg-app)',
+                      border: '1px solid var(--border-glass)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                      {renderAvatar(u, '32px', '13px')}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</h4>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>wants to connect</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginLeft: '8px' }}>
+                      <button
+                        onClick={() => {
+                          socket.emit('accept_contact_request', { userId: user.id, targetUserId: u.id });
+                          onUserUpdate({
+                            receivedRequests: (user.receivedRequests || []).filter(id => id !== u.id),
+                            contacts: [...(user.contacts || []), u.id]
+                          });
+                        }}
+                        style={{ backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => {
+                          socket.emit('decline_contact_request', { userId: user.id, targetUserId: u.id });
+                          onUserUpdate({
+                            receivedRequests: (user.receivedRequests || []).filter(id => id !== u.id)
+                          });
+                        }}
+                        style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Ignore
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Passcode Modal Overlay for private rooms */}
@@ -1023,178 +1237,6 @@ function Sidebar({
   );
 }
 
-function AmbientAudioWidget({ showToast }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [selectedSound, setSelectedSound] = useState('drone'); 
-  const audioCtxRef = React.useRef(null);
-  const sourcesRef = React.useRef([]);
-
-  const stopAudio = () => {
-    if (sourcesRef.current) {
-      sourcesRef.current.forEach(source => {
-        try { source.stop(); } catch (e) {}
-      });
-      sourcesRef.current = [];
-    }
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
-    setIsPlaying(false);
-  };
-
-  const startAudio = () => {
-    stopAudio();
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    
-    const ctx = new AudioContext();
-    audioCtxRef.current = ctx;
-    const sources = [];
-
-    if (selectedSound === 'drone') {
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      osc1.type = 'sawtooth'; osc1.frequency.value = 55;
-      osc2.type = 'sine'; osc2.frequency.value = 110;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass'; filter.frequency.value = 150;
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.15; lfoGain.gain.value = 40;
-      lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
-      osc1.connect(filter); osc2.connect(filter);
-      filter.connect(gainNode); gainNode.connect(ctx.destination);
-      gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 2.0);
-      osc1.start(); osc2.start(); lfo.start();
-      sources.push(osc1, osc2, lfo);
-    } 
-    else if (selectedSound === 'chords') {
-      const frequencies = [130.81, 196.00, 261.63, 329.63, 493.88];
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass'; filter.frequency.value = 350;
-      const mainGain = ctx.createGain();
-      mainGain.connect(ctx.destination);
-      mainGain.gain.setValueAtTime(0, ctx.currentTime);
-      mainGain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 3.0);
-      frequencies.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const oscGain = ctx.createGain();
-        osc.type = 'sine'; osc.frequency.value = freq;
-        const oscLfo = ctx.createOscillator();
-        const oscLfoGain = ctx.createGain();
-        oscLfo.frequency.value = 0.05 + idx * 0.02; oscLfoGain.gain.value = 0.25;
-        oscLfo.connect(oscLfoGain); oscLfoGain.connect(oscGain.gain);
-        oscGain.gain.setValueAtTime(0.2, ctx.currentTime);
-        osc.connect(oscGain); oscGain.connect(filter);
-        osc.start(); oscLfo.start();
-        sources.push(osc, oscLfo);
-      });
-      filter.connect(mainGain);
-      sources.push(mainGain);
-    } 
-    else if (selectedSound === 'rain') {
-      const bufferSize = 2 * ctx.sampleRate;
-      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const output = noiseBuffer.getChannelData(0);
-      let lastOut = 0.0;
-      for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        output[i] = (lastOut + (0.02 * white)) / 1.02;
-        lastOut = output[i];
-        output[i] *= 3.5;
-      }
-      const noiseNode = ctx.createBufferSource();
-      noiseNode.buffer = noiseBuffer; noiseNode.loop = true;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass'; filter.frequency.value = 350;
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.08; lfoGain.gain.value = 80;
-      lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
-      const gainNode = ctx.createGain();
-      gainNode.gain.setValueAtTime(0, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 2.0);
-      noiseNode.connect(filter); filter.connect(gainNode); gainNode.connect(ctx.destination);
-      noiseNode.start(); lfo.start();
-      sources.push(noiseNode, lfo);
-    }
-    sourcesRef.current = sources;
-    setIsPlaying(true);
-  };
-
-  const handleTogglePlay = () => {
-    if (isPlaying) {
-      stopAudio();
-      showToast('Ambient Hum Muted', 'info');
-    } else {
-      startAudio();
-      showToast(`Playing ${selectedSound} soundscape`, 'success');
-    }
-  };
-
-  useEffect(() => {
-    if (isPlaying) startAudio();
-  }, [selectedSound]);
-
-  useEffect(() => { return () => stopAudio(); }, []);
-
-  return (
-    <div style={{
-      padding: '8px 16px',
-      margin: '6px 12px 12px 12px',
-      borderRadius: 'var(--radius-md)',
-      backgroundColor: 'var(--bg-panel)',
-      border: '1px solid var(--border-glass)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '8px',
-      boxShadow: 'var(--shadow-sm)'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <Volume2 size={14} style={{ color: isPlaying ? 'var(--primary)' : 'var(--text-muted)' }} />
-        <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)' }}>Ambient Hum</span>
-      </div>
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
-        <select 
-          value={selectedSound} 
-          onChange={(e) => setSelectedSound(e.target.value)}
-          style={{
-            backgroundColor: 'var(--bg-app)',
-            color: 'var(--text-primary)',
-            border: '1.5px solid var(--border-glass)',
-            borderRadius: '6px',
-            padding: '3px 6px',
-            fontSize: '11px',
-            outline: 'none',
-            cursor: 'pointer'
-          }}
-        >
-          <option value="drone">Cyber Hum</option>
-          <option value="chords">Space Chords</option>
-          <option value="rain">Binaural Rain</option>
-        </select>
-        <button
-          onClick={handleTogglePlay}
-          style={{
-            backgroundColor: isPlaying ? 'var(--danger)' : 'var(--primary)',
-            color: 'var(--text-on-primary)',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '4px 10px',
-            fontSize: '11px',
-            fontWeight: 700,
-            cursor: 'pointer'
-          }}
-        >
-          {isPlaying ? 'Mute' : 'Play'}
-        </button>
-      </div>
-    </div>
-  );
-}
+// Ambient audio widget removed
 
 export default Sidebar;

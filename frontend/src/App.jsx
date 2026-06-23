@@ -582,6 +582,16 @@ function App() {
       }));
     };
 
+    // Interactive Poll updates
+    const handlePollUpdated = ({ messageId, pollData }) => {
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId) {
+          return { ...m, pollData };
+        }
+        return m;
+      }));
+    };
+
     // Typing activity updates
     const handleTypingUpdate = ({ roomId, senderId, username, isTyping }) => {
       const typingKey = roomId || senderId;
@@ -753,6 +763,7 @@ function App() {
     socket.on('messages_deleted_bulk', handleMessagesDeletedBulk);
     socket.on('secret_message', handleSecretMessage);
     socket.on('chat_status_updated', handleChatStatusUpdated);
+    socket.on('poll_updated', handlePollUpdated);
 
     return () => {
       socket.off(SOCKET_EVENTS.USER_LOGIN, handleLoginResponse);
@@ -777,6 +788,7 @@ function App() {
       socket.off('messages_deleted_bulk', handleMessagesDeletedBulk);
       socket.off('secret_message', handleSecretMessage);
       socket.off('chat_status_updated', handleChatStatusUpdated);
+      socket.off('poll_updated', handlePollUpdated);
     };
   }, [socket, user, soundEnabled, onlineUsers, rooms]);
 

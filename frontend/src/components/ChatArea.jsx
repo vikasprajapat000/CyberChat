@@ -113,6 +113,7 @@ function ChatArea({
   const recordingTimerRef = useRef(null);
   const isTypingRef = useRef(false);
   const offlineQueueRef = useRef([]);
+  const mediaRecorderRef = useRef(null);
 
   // Keyboard Shortcuts setup
   useEffect(() => {
@@ -159,7 +160,7 @@ function ChatArea({
     }
   }, [connected, socket]);
 
-  // Clean up on conversation targets swap
+  // Clean up on conversation targets swap or component unmount
   useEffect(() => {
     setInputText('');
     setReplyingTo(null);
@@ -176,18 +177,34 @@ function ChatArea({
     setTaskAssigneeId('');
     setVisibleLimit(50);
     setIsScrolledToBottom(true);
-    stopRecording(false); // Abort any active recording
+    stopRecording(false); // Abort any active recording on chat target swap
     
-    if (socket && isTypingRef.current) {
-      isTypingRef.current = false;
-      socket.emit('typing', {
-        roomId: activeChat?.type === 'group' ? activeChat.id : null,
-        recipientId: activeChat?.type === 'direct' ? activeChat.id : null,
-        isTyping: false,
-        userId: user.id
-      });
-    }
-  }, [activeChat]);
+    const oldActiveChat = activeChat;
+
+    return () => {
+      // Abort active recording on unmount or swap
+      stopRecording(false);
+
+      if (socket && isTypingRef.current && oldActiveChat) {
+        isTypingRef.current = false;
+        socket.emit('typing', {
+          roomId: oldActiveChat.type === 'group' ? oldActiveChat.id : null,
+          recipientId: oldActiveChat.type === 'direct' ? oldActiveChat.id : null,
+          isTyping: false,
+          userId: user.id
+        });
+      }
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      if (touchTimerRef.current) {
+        clearTimeout(touchTimerRef.current);
+        touchTimerRef.current = null;
+      }
+    };
+  }, [activeChat, socket, user.id]);
 
   // WebRTC screenshots warn handler
   useEffect(() => {
@@ -344,6 +361,7 @@ function ChatArea({
 
       setAudioChunks(chunks);
       setMediaRecorder(recorder);
+      mediaRecorderRef.current = recorder; // Sync to ref for cleanup closure safety
       setRecordingDuration(0);
       setIsRecording(true);
       recorder.start();
@@ -362,19 +380,30 @@ function ChatArea({
   function stopRecording(shouldSend = true) {
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
     }
     
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    const rec = mediaRecorder || mediaRecorderRef.current;
+    
+    if (rec && rec.state !== 'inactive') {
       if (!shouldSend) {
         // Abort recording cleanly
-        mediaRecorder.onstop = null;
+        rec.onstop = null;
       }
-      mediaRecorder.stop();
-      mediaRecorder.stream.getTracks().forEach(track => track.stop()); // release stream
+      try {
+        rec.stop();
+      } catch (e) {
+        console.error("Error stopping recorder:", e);
+      }
+      if (rec.stream) {
+        rec.stream.getTracks().forEach(track => track.stop()); // release stream
+      }
     }
 
     setIsRecording(false);
     setRecordingDuration(0);
+    setMediaRecorder(null);
+    mediaRecorderRef.current = null;
   }
 
   // Launch Poll Cards Callback
@@ -1415,64 +1444,74 @@ function ChatArea({
                                 )}
 
                                 {/* Location sharing card rendering */}
-                                {msg.mediaType === 'location' && (
-                                  <div style={{
-                                    padding: '12px',
-                                    backgroundColor: 'rgba(108, 92, 231, 0.1)',
-                                    border: '1.5px solid #6c5ce7',
-                                    borderRadius: '8px',
-                                    minWidth: '220px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontWeight: 700, fontSize: '13px' }}>
-                                      <MapPin size={16} className="animate-bounce" />
-                                      <span>LIVE LOCATION COORDINATES</span>
-                                    </div>
+                                {msg.mediaType === 'location' && (() => {
+                                  let coords = { lat: 40.7128, lng: -74.0060 };
+                                  try {
+                                    if (msg.mediaUrl) {
+                                      coords = JSON.parse(msg.mediaUrl);
+                                    }
+                                  } catch (e) {
+                                    console.error("Error parsing location coordinates:", e);
+                                  }
+                                  return (
                                     <div style={{
-                                      height: '85px',
-                                      backgroundColor: '#0f172a',
-                                      border: '1px solid rgba(255,255,255,0.08)',
-                                      borderRadius: '6px',
+                                      padding: '12px',
+                                      backgroundColor: 'rgba(108, 92, 231, 0.1)',
+                                      border: '1.5px solid #6c5ce7',
+                                      borderRadius: '8px',
+                                      minWidth: '220px',
                                       display: 'flex',
                                       flexDirection: 'column',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      position: 'relative',
-                                      overflow: 'hidden'
+                                      gap: '8px'
                                     }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontWeight: 700, fontSize: '13px' }}>
+                                        <MapPin size={16} className="animate-bounce" />
+                                        <span>LIVE LOCATION COORDINATES</span>
+                                      </div>
                                       <div style={{
-                                        position: 'absolute',
-                                        width: '100%',
-                                        height: '100%',
-                                        backgroundImage: 'radial-gradient(rgba(108, 92, 231, 0.3) 1px, transparent 0)',
-                                        backgroundSize: '10px 10px',
-                                        opacity: 0.5
-                                      }} />
-                                      <span style={{ fontSize: '12px', color: '#fff', fontFamily: 'monospace', zIndex: 1 }}>Lat: 40.7128</span>
-                                      <span style={{ fontSize: '12px', color: '#fff', fontFamily: 'monospace', zIndex: 1 }}>Lng: -74.0060</span>
-                                    </div>
-                                    <a
-                                      href="https://maps.google.com/?q=40.7128,-74.0060"
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      style={{
-                                        backgroundColor: '#6c5ce7',
-                                        color: '#fff',
-                                        textAlign: 'center',
-                                        padding: '6px',
+                                        height: '85px',
+                                        backgroundColor: '#0f172a',
+                                        border: '1px solid rgba(255,255,255,0.08)',
                                         borderRadius: '6px',
-                                        fontSize: '11px',
-                                        fontWeight: 700,
-                                        textDecoration: 'none',
-                                        display: 'block'
-                                      }}
-                                    >
-                                      View on Google Maps
-                                    </a>
-                                  </div>
-                                )}
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        position: 'relative',
+                                        overflow: 'hidden'
+                                      }}>
+                                        <div style={{
+                                          position: 'absolute',
+                                          width: '100%',
+                                          height: '100%',
+                                          backgroundImage: 'radial-gradient(rgba(108, 92, 231, 0.3) 1px, transparent 0)',
+                                          backgroundSize: '10px 10px',
+                                          opacity: 0.5
+                                        }} />
+                                        <span style={{ fontSize: '12px', color: '#fff', fontFamily: 'monospace', zIndex: 1 }}>Lat: {coords.lat?.toFixed(4) || coords.lat}</span>
+                                        <span style={{ fontSize: '12px', color: '#fff', fontFamily: 'monospace', zIndex: 1 }}>Lng: {coords.lng?.toFixed(4) || coords.lng}</span>
+                                      </div>
+                                      <a
+                                        href={`https://maps.google.com/?q=${coords.lat},${coords.lng}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{
+                                          backgroundColor: '#6c5ce7',
+                                          color: '#fff',
+                                          textAlign: 'center',
+                                          padding: '6px',
+                                          borderRadius: '6px',
+                                          fontSize: '11px',
+                                          fontWeight: 700,
+                                          textDecoration: 'none',
+                                          display: 'block'
+                                        }}
+                                      >
+                                        View on Google Maps
+                                      </a>
+                                    </div>
+                                  );
+                                })()}
 
                                 {msg.mediaType !== 'image' && msg.mediaType !== 'audio' && msg.mediaType !== 'location' && (
                                   <a 
