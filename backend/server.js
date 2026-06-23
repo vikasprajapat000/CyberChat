@@ -30,7 +30,7 @@ const CallHistory = require('./models/CallHistory');
 const Story = require('./models/Story');
 
 // Connect to MongoDB
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vikasprajapat20004_db_user:7IXmzc3isvDSs2jD@cluster0.kiyfv7l.mongodb.net/cyberchat?appName=Cluster0';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://vikasprajapat20004_db_user:vikasprajapat@cluster0.kiyfv7l.mongodb.net/cyberchat?appName=Cluster0';
 mongoose.connect(MONGODB_URI)
   .then(async () => {
     console.log('Connected to MongoDB successfully!');
