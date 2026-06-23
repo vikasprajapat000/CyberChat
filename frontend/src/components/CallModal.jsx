@@ -783,7 +783,6 @@ function CallModal({
                   <audio 
                     ref={remoteAudioRef} 
                     autoPlay 
-                    playsInline 
                     style={{ display: 'none' }}
                   />
                 )}

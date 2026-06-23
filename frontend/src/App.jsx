@@ -448,14 +448,15 @@ function App() {
         const self = userList.find(u => u.id === user.id);
         if (self) {
           setUser(prev => {
+            if (!prev) return prev;
             const updated = {
               ...prev,
-              blockedUsers: self.blockedUsers,
-              mutedUsers: self.mutedUsers,
-              isMutedGlobally: self.isMutedGlobally,
-              contacts: self.contacts || [],
-              sentRequests: self.sentRequests || [],
-              receivedRequests: self.receivedRequests || []
+              blockedUsers: self.blockedUsers !== undefined ? self.blockedUsers : (prev.blockedUsers || []),
+              mutedUsers: self.mutedUsers !== undefined ? self.mutedUsers : (prev.mutedUsers || []),
+              isMutedGlobally: self.isMutedGlobally !== undefined ? self.isMutedGlobally : (prev.isMutedGlobally || false),
+              contacts: self.contacts !== undefined ? self.contacts : (prev.contacts || []),
+              sentRequests: self.sentRequests !== undefined ? self.sentRequests : (prev.sentRequests || []),
+              receivedRequests: self.receivedRequests !== undefined ? self.receivedRequests : (prev.receivedRequests || [])
             };
             localStorage.setItem('cc_user', JSON.stringify(updated));
             return updated;
