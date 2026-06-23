@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Crown, Check, Zap, Star, Shield, Sparkles, ChevronRight } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-nhlc.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-qiqj.onrender.com');
 
 const TIER_CONFIG = {
   free: { icon: '🆓', gradient: 'linear-gradient(135deg,#64748b,#475569)', btnClass: 'free-btn', label: 'Cyber Free' },

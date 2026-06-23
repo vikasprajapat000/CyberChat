@@ -48,7 +48,7 @@ const server = http.createServer(app);
 
 // Configure CORS
 const corsOptions = {
-  origin: ['https://cyber-chat-exqq.vercel.app', 'http://localhost:5173'],
+  origin: ['https://cyber-chat-one.vercel.app', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true

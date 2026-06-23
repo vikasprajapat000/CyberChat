@@ -13,7 +13,7 @@ import PollCreator from './PollCreator';
 import confetti from 'canvas-confetti';
 import { SOCKET_EVENTS } from '../../../shared/constants.json';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-nhlc.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-qiqj.onrender.com');
 
 // Pre-seeded local developer sticker pack
 const DEVELOPER_STICKERS = [
