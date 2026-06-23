@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, Camera, Globe, Phone, User, Plus, Users, Settings, 
-  ShieldAlert, Sparkles, HelpCircle, Lock, ArrowLeft, PlusCircle, X
+  ShieldAlert, Sparkles, HelpCircle, Lock, ArrowLeft, PlusCircle, X,
+  Bot
 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
@@ -15,6 +16,8 @@ import CommunitiesPanel from './CommunitiesPanel';
 import PremiumPanel from './PremiumPanel';
 import CallHistoryPanel from './CallHistoryPanel';
 import ProfilePanelCustom from './ProfilePanel';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-nhlc.onrender.com');
 
 
 function ChatLayout({
