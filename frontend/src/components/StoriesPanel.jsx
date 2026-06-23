@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, X, ChevronLeft, ChevronRight, Eye, Camera, Type, Upload } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-qiqj.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-4hvt.onrender.com');
 
 const BG_COLORS = [
   '#0a0a1a', '#1a0a2e', '#0a1a2e', '#1a2e0a',

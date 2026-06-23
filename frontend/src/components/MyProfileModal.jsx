@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Camera, Save, User, Info, FileText } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-qiqj.onrender.com');
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-4hvt.onrender.com');
 
 function MyProfileModal({
   user,

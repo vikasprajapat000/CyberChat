@@ -45,7 +45,7 @@ function Sidebar({
   const [enteredPasscode, setEnteredPasscode] = useState('');
   const [passcodeError, setPasscodeError] = useState('');
 
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-1-qiqj.onrender.com');
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : 'https://cyberchat-4hvt.onrender.com');
 
   const getInitials = (name) => {
     if (!name) return '?';
