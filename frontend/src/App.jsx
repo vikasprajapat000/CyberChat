@@ -157,6 +157,7 @@ function App() {
   const [selectedVideoInput, setSelectedVideoInput] = useState('');
   const [selectedAudioOutput, setSelectedAudioOutput] = useState('');
   const [videoQuality, setVideoQuality] = useState('hd'); // 'hd' | 'sd' | 'low'
+  const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
 
   // WebRTC Refs
   const pcRef = useRef(null);
@@ -894,6 +895,7 @@ function App() {
         video: isVideo ? {
           width: videoQuality === 'hd' ? 1280 : (videoQuality === 'sd' ? 640 : 320),
           height: videoQuality === 'hd' ? 720 : (videoQuality === 'sd' ? 480 : 240),
+          facingMode: facingMode,
           deviceId: selectedVideoInput ? { exact: selectedVideoInput } : undefined
         } : false
       };
@@ -965,6 +967,7 @@ function App() {
         video: incoming.isVideo ? {
           width: videoQuality === 'hd' ? 1280 : (videoQuality === 'sd' ? 640 : 320),
           height: videoQuality === 'hd' ? 720 : (videoQuality === 'sd' ? 480 : 240),
+          facingMode: facingMode,
           deviceId: selectedVideoInput ? { exact: selectedVideoInput } : undefined
         } : false
       };
@@ -1037,10 +1040,11 @@ function App() {
     cleanupCall();
   };
 
-  const onDeviceChange = async (audioId, videoId, quality) => {
+  const onDeviceChange = async (audioId, videoId, quality, newFacingMode = facingMode) => {
     setSelectedAudioInput(audioId);
     setSelectedVideoInput(videoId);
     setVideoQuality(quality);
+    setFacingMode(newFacingMode);
 
     // Apply hot-swap only when active connected call is ongoing
     if (callState === 'connected' && localStreamRef.current) {
@@ -1055,6 +1059,7 @@ function App() {
           video: isVideoCall ? {
             width: quality === 'hd' ? 1280 : (quality === 'sd' ? 640 : 320),
             height: quality === 'hd' ? 720 : (quality === 'sd' ? 480 : 240),
+            facingMode: newFacingMode,
             deviceId: videoId ? { exact: videoId } : undefined
           } : false
         };
@@ -1239,6 +1244,7 @@ function App() {
           videoQuality={videoQuality}
           setVideoQuality={setVideoQuality}
           onDeviceChange={onDeviceChange}
+          facingMode={facingMode}
         />
       )}
       
